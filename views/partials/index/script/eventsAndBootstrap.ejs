@@ -1,0 +1,860 @@
+        mapInfoButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleMapInfoPanel();
+        });
+
+        activeMapSummaryButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleMapMenu();
+        });
+
+        activeMapSummaryButton.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+        });
+
+        mapMenu.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
+        searchResultsPanel.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
+        mapInfoPanel.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
+        appToast.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
+        appToast.addEventListener('mouseenter', () => {
+            toastState.isHovered = true;
+            pauseToastHide();
+        });
+
+        appToast.addEventListener('mouseleave', () => {
+            toastState.isHovered = false;
+            resumeToastHide();
+        });
+
+        appToastCloseButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            hideToast();
+        });
+
+        claimSelectionButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            evaluateSelectionState.isOpen = true;
+            evaluateSelectionState.modalPosition = null;
+            closeClaimSelectionModal();
+            scheduleRender();
+        });
+
+        evaluateSelectionModal.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
+        evaluateSelectionModalDragHandle.addEventListener('pointerdown', startEvaluateSelectionModalDrag);
+        evaluateSelectionModalDragHandle.addEventListener('pointermove', updateEvaluateSelectionModalDrag);
+        evaluateSelectionModalDragHandle.addEventListener('pointerup', stopEvaluateSelectionModalDrag);
+        evaluateSelectionModalDragHandle.addEventListener('pointercancel', stopEvaluateSelectionModalDrag);
+
+        claimSelectionModal.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
+        claimSelectionModalDragHandle.addEventListener('pointerdown', startClaimSelectionModalDrag);
+        claimSelectionModalDragHandle.addEventListener('pointermove', updateClaimSelectionModalDrag);
+        claimSelectionModalDragHandle.addEventListener('pointerup', stopClaimSelectionModalDrag);
+        claimSelectionModalDragHandle.addEventListener('pointercancel', stopClaimSelectionModalDrag);
+
+        closeClaimSelectionModalButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeClaimSelectionModal();
+            scheduleRender();
+        });
+
+        closeEvaluateSelectionModalButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeEvaluateSelectionModal();
+            scheduleRender();
+        });
+
+        cancelEvaluateSelectionButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeEvaluateSelectionModal();
+            scheduleRender();
+        });
+
+        holdEvaluateSelectionButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeEvaluateSelectionModal();
+            scheduleRender();
+        });
+
+        decreaseEvaluateZoningRingsButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            evaluateSelectionState.zoningRings = Math.max(0, evaluateSelectionState.zoningRings - 1);
+            scheduleRender();
+        });
+
+        increaseEvaluateZoningRingsButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            evaluateSelectionState.zoningRings = Math.min(3, evaluateSelectionState.zoningRings + 1);
+            scheduleRender();
+        });
+
+        confirmEvaluateSelectionButton.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (evaluateSelectionState.isClaiming) {
+                return;
+            }
+
+            evaluateSelectionState.isClaiming = true;
+            scheduleRender();
+
+            const claimedRange = await claimCurrentSelection();
+            evaluateSelectionState.isClaiming = false;
+
+            if (claimedRange) {
+                closeEvaluateSelectionModal();
+                claimSelectionState.isOpen = true;
+                claimSelectionState.viewingClaimId = claimedRange.id;
+                claimSelectionState.modalPosition = null;
+                claimSelectionState.isEditingTitle = true;
+                claimSelectionState.titleBeforeEdit = getClaimTitleValueOrDefault(claimedRange.title);
+                claimSelectionState.title = getClaimTitleValueOrDefault(claimedRange.title);
+                showToast('Range claimed successfully.', {
+                    tone: 'success',
+                    durationMs: 4500,
+                });
+                requestAnimationFrame(() => {
+                    renderClaimTitleEditState();
+                    claimSelectionModalTitle.focus();
+                    if (typeof claimSelectionModalTitle.select === 'function') {
+                        claimSelectionModalTitle.select();
+                    }
+                });
+            }
+            scheduleRender();
+        });
+
+        claimSelectionCancelButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeClaimSelectionModal();
+            scheduleRender();
+        });
+
+        dropClaimSelectionButton.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (claimSelectionState.viewingClaimId) {
+                const viewedClaim = getClaimedRangeById(claimSelectionState.viewingClaimId);
+                if (isAuctionRange(viewedClaim)) {
+                    closeClaimSelectionModal();
+                    scheduleRender();
+                    return;
+                }
+                const dropped = await dropViewedClaimRange();
+                if (!dropped) {
+                    scheduleRender();
+                    return;
+                }
+            }
+            closeClaimSelectionModal();
+            scheduleRender();
+        });
+
+        sellClaimSelectionButton.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (claimSelectionState.viewingClaimId) {
+                const viewedClaim = getClaimedRangeById(claimSelectionState.viewingClaimId);
+                if (isAuctionRange(viewedClaim)) {
+                    showToast('Buying dropped ranges is not available yet.', {
+                        tone: 'info',
+                        durationMs: 5000,
+                    });
+                    scheduleRender();
+                    return;
+                }
+                closeClaimSelectionModal();
+                scheduleRender();
+                return;
+            }
+
+            const claimedRange = await claimCurrentSelection();
+            if (claimedRange) {
+                closeClaimSelectionModal();
+            }
+            scheduleRender();
+        });
+        claimSelectionUpdateButton.addEventListener('click', async (e) => {
+            e.stopPropagation();
+
+            if (claimSelectionState.viewingClaimId) {
+                syncClaimSelectionInputsToViewedClaim({ includeImage: true });
+                closeClaimSelectionModal();
+                scheduleRender();
+                return;
+            }
+
+            const claimedRange = await claimCurrentSelection();
+            if (claimedRange) {
+                closeClaimSelectionModal();
+            }
+            scheduleRender();
+        });
+
+        editClaimTitleButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+
+            if (!claimSelectionState.isEditingTitle) {
+                claimSelectionState.isEditingTitle = true;
+                claimSelectionState.titleBeforeEdit = getClaimTitleValueOrDefault(claimSelectionState.title);
+                claimSelectionModalTitle.value = claimSelectionState.titleBeforeEdit;
+                renderClaimTitleEditState();
+                claimSelectionModalTitle.focus();
+                if (typeof claimSelectionModalTitle.select === 'function') {
+                    claimSelectionModalTitle.select();
+                }
+                return;
+            }
+
+            const nextTitle = getClaimTitleValueOrDefault(claimSelectionState.title);
+            claimSelectionState.title = nextTitle;
+            claimSelectionModalTitle.value = nextTitle;
+            claimSelectionState.isEditingTitle = false;
+            renderClaimTitleEditState();
+            syncClaimSelectionInputsToViewedClaim();
+        });
+
+        cancelClaimTitleEditButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            claimSelectionState.title = getClaimTitleValueOrDefault(claimSelectionState.titleBeforeEdit);
+            claimSelectionModalTitle.value = claimSelectionState.title;
+            claimSelectionState.isEditingTitle = false;
+            renderClaimTitleEditState();
+            syncClaimSelectionInputsToViewedClaim();
+        });
+
+        clearClaimTitleButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            claimSelectionState.title = '';
+            claimSelectionModalTitle.value = '';
+            renderClaimTitleEditState();
+            claimSelectionModalTitle.focus();
+            syncClaimSelectionInputsToViewedClaim();
+        });
+
+        claimSelectionModalTitle.addEventListener('input', () => {
+            const rawValue = claimSelectionModalTitle.value;
+            const normalized = normalizeClaimTitle(claimSelectionModalTitle.value);
+            if (rawValue !== normalized) {
+                claimSelectionModalTitle.value = normalized;
+                const rawSpaceCount = (rawValue.match(/ /g) || []).length;
+                if (rawSpaceCount > 3) {
+                    showToast('Range name can contain up to 4 words (maximum 3 spaces).', {
+                        tone: 'error',
+                        durationMs: 3500,
+                    });
+                }
+            }
+            claimSelectionState.title = normalized;
+            renderClaimTitleEditState();
+            syncClaimSelectionInputsToViewedClaim();
+        });
+        claimSelectionModalTitle.addEventListener('keydown', (e) => {
+            if (e.key !== ' ') {
+                return;
+            }
+
+            const currentValue = String(claimSelectionModalTitle.value || '');
+            const currentSpaceCount = (currentValue.match(/ /g) || []).length;
+            if (currentSpaceCount < 3) {
+                return;
+            }
+
+            e.preventDefault();
+            showToast('Range name can contain up to 4 words (maximum 3 spaces).', {
+                tone: 'error',
+                durationMs: 3500,
+            });
+        });
+        claimSelectionShareButton.addEventListener('click', async (e) => {
+            e.stopPropagation();
+
+            if (!claimSelectionState.viewingClaimId) {
+                showToast('Open a claimed range to share it.', {
+                    tone: 'info',
+                    durationMs: 4000,
+                });
+                return;
+            }
+
+            const viewedClaim = getClaimedRangeById(claimSelectionState.viewingClaimId);
+            const shareUrl = buildClaimShareUrl(viewedClaim);
+            if (!shareUrl) {
+                showToast('Unable to build a share URL for this range.', {
+                    tone: 'error',
+                    durationMs: 5000,
+                });
+                return;
+            }
+
+            try {
+                await navigator.clipboard.writeText(shareUrl);
+                showToast('Share link copied to clipboard.', {
+                    tone: 'success',
+                    durationMs: 3500,
+                });
+            } catch (error) {
+                const hiddenInput = document.createElement('textarea');
+                hiddenInput.value = shareUrl;
+                hiddenInput.setAttribute('readonly', 'readonly');
+                hiddenInput.style.position = 'fixed';
+                hiddenInput.style.opacity = '0';
+                hiddenInput.style.pointerEvents = 'none';
+                document.body.appendChild(hiddenInput);
+                hiddenInput.focus();
+                hiddenInput.select();
+                const didCopy = document.execCommand('copy');
+                document.body.removeChild(hiddenInput);
+
+                if (didCopy) {
+                    showToast('Share link copied to clipboard.', {
+                        tone: 'success',
+                        durationMs: 3500,
+                    });
+                    return;
+                }
+
+                showToast('Could not copy automatically. Your share URL is ready in this browser tab.', {
+                    tone: 'error',
+                    durationMs: 5000,
+                });
+                window.history.replaceState(null, '', shareUrl);
+            }
+        });
+        claimSelectionDescriptionInput.addEventListener('input', () => {
+            if (claimSelectionDescriptionInput.value.length > 512) {
+                claimSelectionDescriptionInput.value = claimSelectionDescriptionInput.value.slice(0, 512);
+            }
+            syncClaimSelectionInputsToViewedClaim();
+        });
+        claimSelectionRedirectInput.addEventListener('input', () => {
+            syncClaimSelectionInputsToViewedClaim();
+        });
+        claimSelectionPreviewButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const targetUrl = String(claimSelectionRedirectInput.value || '').trim();
+            if (!targetUrl) {
+                showToast('Add a redirect link to preview first.', {
+                    tone: 'info',
+                    durationMs: 4500,
+                });
+                return;
+            }
+
+            let normalizedUrl = targetUrl;
+            if (!/^https?:\/\//i.test(normalizedUrl)) {
+                normalizedUrl = `https://${normalizedUrl}`;
+            }
+
+            try {
+                const parsedUrl = new URL(normalizedUrl);
+                window.open(parsedUrl.toString(), '_blank', 'noopener,noreferrer');
+            } catch (error) {
+                showToast('Please provide a valid URL to preview.', {
+                    tone: 'error',
+                    durationMs: 5500,
+                });
+            }
+        });
+        claimSelectionTagInput.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter') {
+                return;
+            }
+
+            e.preventDefault();
+            e.stopPropagation();
+            const nextTag = String(claimSelectionTagInput.value || '').trim();
+            if (!nextTag) {
+                return;
+            }
+
+            setClaimSelectionTags([...(claimSelectionState.tags || []), nextTag]);
+            syncClaimSelectionInputsToViewedClaim();
+            claimSelectionTagInput.value = '';
+        });
+
+        function isSupportedClaimImage(file) {
+            if (!file) {
+                return false;
+            }
+
+            const validMimeTypes = ['image/png', 'image/jpeg'];
+            if (validMimeTypes.includes(file.type)) {
+                return true;
+            }
+
+            const lowerName = String(file.name || '').toLowerCase();
+            return lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg');
+        }
+
+        function handleClaimImageFileSelection(file) {
+            if (!file) {
+                return;
+            }
+
+            const maxImageBytes = 5 * 1024 * 1024;
+            if (!isSupportedClaimImage(file)) {
+                showToast('Please select a PNG, JPG, or JPEG image.', {
+                    tone: 'error',
+                    durationMs: 6000,
+                });
+                claimSelectionImageInput.value = '';
+                return;
+            }
+
+            if (file.size > maxImageBytes) {
+                showToast('Image must be 5MB or smaller.', {
+                    tone: 'error',
+                    durationMs: 6000,
+                });
+                claimSelectionImageInput.value = '';
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = () => {
+                applyClaimSelectionImageToContext(typeof reader.result === 'string' ? reader.result : '');
+            };
+            reader.onerror = () => {
+                showToast('Unable to read that image file.', {
+                    tone: 'error',
+                    durationMs: 6000,
+                });
+            };
+            reader.readAsDataURL(file);
+        }
+
+        claimSelectionImagePreview.addEventListener('load', () => {
+            claimSelectionCropState.sourceWidth = claimSelectionImagePreview.naturalWidth || 0;
+            claimSelectionCropState.sourceHeight = claimSelectionImagePreview.naturalHeight || 0;
+            applyConfirmedClaimSelectionCrop();
+            syncClaimSelectionInputsToViewedClaim();
+        });
+
+        claimSelectionImageCropModeButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!claimSelectionCropState.rawImageDataUrl) {
+                return;
+            }
+            if (!claimSelectionCropState.isCropMode) {
+                claimSelectionCropState.isCropMode = true;
+                updateClaimSelectionCropModeUi();
+                return;
+            }
+            claimSelectionCropState.isCropMode = false;
+            claimSelectionCropState.confirmedPanX = claimSelectionCropState.panX;
+            claimSelectionCropState.confirmedPanY = claimSelectionCropState.panY;
+            claimSelectionCropState.confirmedCropScale = claimSelectionCropState.cropScale;
+            updateClaimSelectionCropModeUi();
+            exportClaimSelectionCroppedImage();
+            syncClaimSelectionInputsToViewedClaim();
+        });
+
+        claimSelectionImageContainer.addEventListener('pointerdown', (e) => {
+            if (!claimSelectionCropState.rawImageDataUrl) {
+                return;
+            }
+            if (e.target && e.target.closest && (e.target.closest('#claimSelectionImageDeleteButton') || e.target.closest('#claimSelectionImageCropModeButton'))) {
+                return;
+            }
+            startClaimSelectionCropDrag(e);
+        });
+
+        claimSelectionCropResizeHandle.addEventListener('pointerdown', (e) => {
+            startClaimSelectionCropResize(e);
+        });
+
+        claimSelectionImageContainer.addEventListener('mousedown', (e) => {
+            if (!claimSelectionCropState.rawImageDataUrl) {
+                return;
+            }
+            if (e.target && e.target.closest && (e.target.closest('#claimSelectionImageDeleteButton') || e.target.closest('#claimSelectionImageCropModeButton'))) {
+                return;
+            }
+            startClaimSelectionCropMouseDrag(e);
+        });
+
+        claimSelectionCropResizeHandle.addEventListener('mousedown', (e) => {
+            startClaimSelectionCropMouseResize(e);
+        });
+
+        claimSelectionImageContainer.addEventListener('pointermove', (e) => {
+            if (!claimSelectionCropState.rawImageDataUrl) {
+                return;
+            }
+            updateClaimSelectionCropDrag(e);
+            updateClaimSelectionCropResize(e);
+        });
+
+        claimSelectionImageContainer.addEventListener('pointerup', (e) => {
+            if (!claimSelectionCropState.rawImageDataUrl) {
+                return;
+            }
+            stopClaimSelectionCropDrag(e);
+            stopClaimSelectionCropResize(e);
+            syncClaimSelectionInputsToViewedClaim();
+        });
+
+        claimSelectionImageContainer.addEventListener('pointercancel', (e) => {
+            if (!claimSelectionCropState.rawImageDataUrl) {
+                return;
+            }
+            stopClaimSelectionCropDrag(e);
+            stopClaimSelectionCropResize(e);
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!claimSelectionCropState.rawImageDataUrl) {
+                return;
+            }
+            updateClaimSelectionCropMouseDrag(e);
+            updateClaimSelectionCropMouseResize(e);
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (!claimSelectionCropState.rawImageDataUrl) {
+                return;
+            }
+            stopClaimSelectionCropMouseDrag();
+            stopClaimSelectionCropMouseResize();
+        });
+
+        claimSelectionImageContainer.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (e.target && e.target.closest && (e.target.closest('#claimSelectionCropResizeHandle') || e.target.closest('#claimSelectionImageCropModeButton') || e.target.closest('#claimSelectionImageDeleteButton'))) {
+                return;
+            }
+            if (claimSelectionCropState.rawImageDataUrl && claimSelectionCropState.isCropMode) {
+                return;
+            }
+            claimSelectionImageInput.click();
+        });
+
+        claimSelectionImageContainer.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') {
+                return;
+            }
+
+            e.preventDefault();
+            e.stopPropagation();
+            if (claimSelectionCropState.rawImageDataUrl && claimSelectionCropState.isCropMode) {
+                return;
+            }
+            claimSelectionImageInput.click();
+        });
+
+        claimSelectionImageInput.addEventListener('change', (e) => {
+            e.stopPropagation();
+            const [file] = e.target.files || [];
+            handleClaimImageFileSelection(file);
+            claimSelectionImageInput.value = '';
+        });
+
+        claimSelectionImageDeleteButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            claimSelectionImageInput.value = '';
+            applyClaimSelectionImageToContext('');
+        });
+
+        userProfileButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleUserProfilePanel();
+        });
+
+        userProfileModalCard.addEventListener('pointerdown', (e) => {
+            userProfilePointerDownInside = true;
+            e.stopPropagation();
+        });
+
+        userProfileModalCard.addEventListener('click', (e) => {
+            userProfilePointerDownInside = false;
+            e.stopPropagation();
+        });
+
+        userProfileModal.addEventListener('click', (e) => {
+            const selectionText = window.getSelection ? window.getSelection().toString().trim() : '';
+            if (userProfilePointerDownInside || selectionText) {
+                userProfilePointerDownInside = false;
+                e.stopPropagation();
+                return;
+            }
+
+            closeUserProfilePanel();
+            e.stopPropagation();
+        });
+
+        searchButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleSearchBar();
+        });
+
+        topBarSearch.addEventListener('submit', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            submitSearchQuery();
+        });
+
+        backSearchButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeSearchBar();
+        });
+
+        topBarSearchInput.addEventListener('input', () => {
+            updateSearchResults();
+        });
+
+        document.addEventListener('click', () => {
+            if (suppressNextDocumentClick) {
+                suppressNextDocumentClick = false;
+                return;
+            }
+
+            if (userProfilePointerDownInside) {
+                userProfilePointerDownInside = false;
+                return;
+            }
+
+            closeMapMenu();
+            closeUserProfilePanel();
+            closeClaimSelectionModal();
+            closeEvaluateSelectionModal();
+            scheduleRender();
+        });
+
+        document.addEventListener('pointerup', () => {
+            window.setTimeout(() => {
+                userProfilePointerDownInside = false;
+            }, 0);
+        });
+
+        originButton.addEventListener('click', () => {
+            animateCameraTo({ x: 0, y: 0, zoom: 1 });
+        });
+
+        zoomInButton.addEventListener('click', () => {
+            zoomCamera(1.1);
+        });
+
+        zoomOutButton.addEventListener('click', () => {
+            zoomCamera(0.9);
+        });
+
+        jumpToSelectionButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            jumpToSelection();
+        });
+
+        selectionModeAreaButton.addEventListener('click', () => {
+            if (selectionState.mode === 'area') {
+                return;
+            }
+
+            convertSelectionMode('area');
+            renderSelectionModeToggle();
+            scheduleRender();
+        });
+
+        selectionModePathButton.addEventListener('click', () => {
+            if (selectionState.mode === 'path') {
+                return;
+            }
+
+            convertSelectionMode('path');
+            renderSelectionModeToggle();
+            scheduleRender();
+        });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            cancelCameraAnimation();
+
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = (e.clientX - rect.left - canvas.width / 2) / camera.zoom;
+            const mouseY = (e.clientY - rect.top - canvas.height / 2) / camera.zoom;
+
+            const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+            const newZoom = Math.max(config.minZoom, Math.min(config.maxZoom, camera.zoom * zoomFactor));
+
+            camera.x -= mouseX * (newZoom / camera.zoom - 1);
+            camera.y -= mouseY * (newZoom / camera.zoom - 1);
+            camera.zoom = newZoom;
+
+            scheduleRender();
+        }, { passive: false });
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) {
+                return;
+            }
+
+            const clickedClaimedRange = getClaimedRangeAtTile(screenPointToTile(e.clientX, e.clientY));
+            cancelCameraAnimation();
+            mouse.isDown = true;
+            mouse.mode = clickedClaimedRange && !(e.ctrlKey || e.shiftKey)
+                ? 'claimed-range'
+                : (e.ctrlKey || e.shiftKey) && userState.isLoggedIn ? 'select' : 'pan';
+            mouse.startX = e.clientX;
+            mouse.startY = e.clientY;
+            mouse.lastX = camera.x;
+            mouse.lastY = camera.y;
+            mouse.claimedRangeId = clickedClaimedRange?.id || null;
+            mouse.moved = false;
+
+            if (mouse.mode === 'select') {
+                const startTile = screenPointToTile(e.clientX, e.clientY);
+                selectionState.draft = createSelectionDraft(startTile, e.shiftKey ? 'remove' : 'replace');
+                scheduleRender();
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (mouse.isDown) {
+                return;
+            }
+
+            const hoveredClaimedRange = getClaimedRangeAtTile(screenPointToTile(e.clientX, e.clientY));
+            hoveredClaimedRangeBadgeId = null;
+            wrapper.style.cursor = hoveredClaimedRange ? 'pointer' : '';
+            scheduleRender();
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            hoveredClaimedRangeBadgeId = null;
+            wrapper.style.cursor = '';
+            scheduleRender();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (mouse.isDown) {
+                if (mouse.mode === 'select') {
+                    if (selectionState.draft) {
+                        selectionState.draft = extendSelectionDraft(selectionState.draft, screenPointToTile(e.clientX, e.clientY));
+                        scheduleRender();
+                    }
+                    return;
+                }
+
+                if (mouse.mode === 'claimed-range') {
+                    return;
+                }
+
+                const deltaX = (e.clientX - mouse.startX) / camera.zoom;
+                const deltaY = (e.clientY - mouse.startY) / camera.zoom;
+                if (Math.abs(deltaX) > 0.5 || Math.abs(deltaY) > 0.5) {
+                    mouse.moved = true;
+                }
+
+                camera.x = mouse.lastX + deltaX;
+                camera.y = mouse.lastY + deltaY;
+
+                scheduleRender();
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (mouse.mode === 'pan' && mouse.moved) {
+                suppressNextDocumentClick = true;
+            }
+
+            if (mouse.mode === 'select') {
+                commitSelectionKeys(getSelectionKeys());
+                selectionState.draft = null;
+                scheduleRender();
+            }
+
+            if (mouse.mode === 'claimed-range') {
+                selectedClaimedRangeId = mouse.claimedRangeId;
+                clearTileSelection();
+                scheduleRender();
+            }
+
+            mouse.isDown = false;
+            mouse.mode = null;
+            mouse.claimedRangeId = null;
+            mouse.moved = false;
+        });
+
+        canvas.addEventListener('dblclick', (e) => {
+            const clickedClaimedRange = getClaimedRangeAtTile(screenPointToTile(e.clientX, e.clientY));
+            if (!clickedClaimedRange) {
+                return;
+            }
+
+            e.preventDefault();
+            e.stopPropagation();
+            selectedClaimedRangeId = clickedClaimedRange.id;
+            closeMapMenu();
+            closeSearchBar();
+            closeUserProfilePanel();
+            closeEvaluateSelectionModal();
+            claimSelectionState.isOpen = true;
+            claimSelectionState.viewingClaimId = clickedClaimedRange.id;
+            claimSelectionState.modalPosition = null;
+            selectionState.draft = null;
+            selectionState.committedBounds = null;
+            selectionState.committedKeys = new Set();
+            scheduleRender();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                hideToast();
+                clearTileSelection();
+                closeMapMenu();
+                closeSearchBar();
+                closeUserProfilePanel();
+                closeEvaluateSelectionModal();
+                scheduleRender();
+            }
+
+            const panDistance = 50 / camera.zoom;
+
+            switch (e.key) {
+                case 'ArrowUp':
+                    e.preventDefault();
+                    camera.y -= panDistance;
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    camera.y += panDistance;
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    camera.x -= panDistance;
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    camera.x += panDistance;
+                    break;
+                default:
+                    return;
+            }
+
+            cancelCameraAnimation();
+            scheduleRender();
+        });
+
+        window.addEventListener('resize', resizeCanvas);
+
+        resizeCanvas();
+        renderSelectionModeToggle();
+        updateUserProfileButton();
+        syncUserSession().then(() => {
+            applyTopUpReturnState();
+        }).finally(() => {
+            loadMaps();
+        });

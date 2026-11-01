@@ -1,0 +1,223 @@
+OPEN QUESTIONS — 15TILES PLANNING
+Generated: 2026-05-27
+===================================
+
+These questions must be answered before the map weight formula can be fully defined.
+They are listed in the order they should be resolved, as later topics depend on earlier ones.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. RANGE FINANCIAL SYSTEM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BASE PLATFORM VALUE
+-------------------
+Q1.1  What is the base platform value of a single tile?
+      Is it a fixed constant across the entire platform (e.g. $1 per tile regardless of map),
+      or does each map have its own base tile value,
+      or does it vary by tile position within a map (e.g. center tiles worth more than edge tiles)?
+
+R1.1  A tile has a base platform value of $0.25. But, this value is not static. it may go down. it may go up. It will go down 
+
+Q1.2  Can the base platform value ever change after the platform launches?
+      If yes, what triggers a change, and how does it affect ranges already claimed above that value?
+
+
+RANGE VALUE MODEL
+-----------------
+Q1.3  When a user claims a range, do they set the value themselves, or is the value determined
+      by the platform based on tile count and base value?
+      If the user sets it, is there a minimum they must respect?
+
+Q1.4  When a range is purchased from auction, does the winning bid price become the new
+      intrinsic value of the range, or does the range value revert to something else (e.g. decayed
+      value at time of purchase, or base platform value)?
+
+
+NEIGHBORHOOD EFFECT
+-------------------
+Q1.5  What is the maximum propagation radius of the neighborhood effect?
+      Specifically: does a range only influence its direct neighbors (ranges sharing at least
+      one tile border), or does the effect extend further — e.g. 2 range-steps, 3 range-steps?
+
+Q1.6  Is the neighborhood effect bidirectional?
+      Meaning: can a low-value neighbor pull a range's effective value downward,
+      or does the effect only work upward (neighbors can lift value but never drag it down)?
+
+Q1.7  What is the formula for the neighborhood contribution?
+      For example:
+        - A flat percentage of the average neighbor value added on top of intrinsic value?
+        - A weighted average between intrinsic value and neighbor average?
+        - Something else?
+      The answer determines how computable and predictable the effect is.
+
+Q1.8  If a range has no neighbors (it is isolated on the map), does it simply use its
+      intrinsic value with no neighborhood adjustment?
+
+
+AUCTION DECAY
+-------------
+Q1.9  What is the decay rate for a range sitting in auction with no buyer?
+      Is it a percentage per day (e.g. -2% per day), a fixed amount per day,
+      or something else?
+
+Q1.10 Is the decay linear (same amount lost each period) or exponential
+      (faster at first, slowing as it approaches the base value)?
+
+Q1.11 At what point does a decayed auction range become available for standard claiming?
+      Only when it reaches the exact base platform value, or at some threshold above it?
+
+Q1.12 Does the neighborhood effect slow down or partially offset the decay of an auctioned range?
+      For example: if surrounding ranges are high-value, does the auctioned range decay more slowly
+      than it would in an isolated area?
+
+Q1.13 If yes to Q1.12, how is this offset calculated?
+      Is it a cap (decay cannot bring the range below X% of neighbor average),
+      or a reduction in decay rate (neighbors slow the decay speed)?
+
+
+NET WORTH (COUNTRY-SCOPED)
+--------------------------
+Q1.14 A range is owned by a user registered in France. Does 100% of that range's value
+      count toward France's net worth on that map, or is it split in some way?
+
+Q1.15 What happens to ranges that are unclaimed (no owner, not in auction)?
+      Are they excluded from net worth entirely, or do they count at base platform value
+      toward a global/unattributed bucket?
+
+Q1.16 What happens to a range's net worth contribution when it enters auction (owner lost it
+      due to the 4-hour window)? Does it immediately leave the previous owner's country net worth,
+      or only when a new buyer claims it?
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. CLAIM / HOLD / AUCTION FLOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+RANGE STATES
+------------
+Q2.1  What are all the possible states a range can be in?
+      Current understanding is: Unclaimed / Held / Claimed (pending setup) / Active (owned) / In Auction.
+      Is this accurate and complete?
+
+Q2.2  Can a range move backwards through states?
+      For example, can an Active range return to Unclaimed directly (not via auction),
+      or does it always go through Auction first when ownership ends?
+
+Q2.3  Besides the 4-hour claim window expiry, what other events cause a range to enter auction?
+      For example: owner voluntary surrender, non-payment, admin action, etc.?
+
+
+HOLDING
+-------
+Q2.4  Does holding a range have any cost or financial commitment?
+      For example, a deposit, a reservation fee, or is it entirely free?
+
+Q2.5  Does a hold expire?
+      If yes, after how long, and what happens to the range when a hold expires
+      (returns to unclaimed, or nothing changes because holding does not affect ownership)?
+
+Q2.6  Can multiple users hold the same range at the same time?
+      If yes, is there a cap on the number of simultaneous holders?
+
+Q2.7  Is the number of users currently holding a range publicly visible to other users?
+      This affects whether holding acts as a social signal of desirability.
+
+Q2.8  Does holding a range give the holder any priority or advantage when claiming or bidding?
+      For example, first right of refusal, or a notification before anyone else?
+
+Q2.9  Can a user hold a range that is currently in auction?
+      If yes, does the hold give them any notification or advantage in the auction?
+
+Q2.10 Can a user hold a range that is already actively owned by someone else?
+      If yes, do they get notified if that range enters auction or becomes available?
+
+
+CLAIM PROCESS
+-------------
+Q2.11 When a user initiates a claim on a range, does that range immediately become
+      unavailable to other users for the 4-hour setup window,
+      or can another user claim the same range simultaneously?
+
+Q2.12 If two users try to claim the same range at the same time, how is the conflict resolved?
+      First come first served? A bidding mechanism? Something else?
+
+Q2.13 During the 4-hour setup window, is the range visible to other users as "being set up"
+      or does it appear as already owned?
+
+Q2.14 Can a user extend the 4-hour window for any reason (e.g. technical issue, first-time user)?
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. USER & COUNTRY SYSTEM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+COUNTRY ASSIGNMENT
+------------------
+Q3.1  At what point in the user journey does a user select their country?
+      During registration only, or also configurable afterwards in profile settings?
+
+Q3.2  Can a user change their country after registration?
+      If yes, is there a limit on how often (e.g. once per year, once ever)?
+
+Q3.3  If a user changes their country, what happens to their historical activity signals?
+      Three options:
+        a) All past signals are reassigned to the new country
+        b) All past signals remain attributed to the old country; only future signals go to the new country
+        c) Past signals are discarded from country attribution entirely
+      Which applies?
+
+Q3.4  Is a user's country a single global value (one country for the whole platform),
+      or can a user have a different country per map (e.g. they are French but participate
+      in a South American map as an "Argentine" presence)?
+      Note: earlier discussion mentioned "switching map regions" — this question clarifies what that means.
+
+
+ANONYMOUS USERS & COUNTRY
+--------------------------
+Q3.5  Anonymous users have no registered country. Confirmed they do not contribute to
+      country-scoped weight signals for now. When an anonymous user later registers,
+      do their pre-registration signals get retroactively attributed to their registered country,
+      or do those signals remain unattributed?
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. VISIT DEFINITION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Q4.1  What counts as a "visit" to a map for the purposes of the conversion rate
+      (30% of registered visitors must currently own or hold a range)?
+      Options:
+        a) Any page load of the map, regardless of time spent
+        b) A page load with a minimum dwell time (e.g. at least 30 seconds)
+        c) A page load where the user performed at least one interaction (click, zoom, hover on a range)
+        d) Something else
+
+Q4.2  If the same registered user visits the same map 10 times in a month,
+      do they count as 1 unique visitor or 10 visits in the conversion rate denominator?
+      (The conversion rate should likely use unique visitors, not total visits — confirm.)
+
+Q4.3  Does a visit only count if the user is logged in at the time?
+      Or does a visit count if the user later registers (retroactive attribution)?
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. MAP WEIGHT FORMULA (blocked until above are answered)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Q5.1  Once signals are defined, what relative importance do you assign to each one?
+      For example, is auction speed more important than net worth, or are all signals equal?
+      This determines the weights inside the aggregation formula.
+
+Q5.2  What is the minimum number of data points (e.g. registered visitors from a country)
+      before a country's weight for a map is considered statistically meaningful?
+      Below that threshold, should the platform fall back to the default 0.1 or to random?
+
+Q5.3  For the weekly decay on signals: does the decay apply to the raw signal values
+      (e.g. visits older than 7 days count less), or to the computed weight itself
+      (the weight score drifts toward 0 if no new signals arrive)?
+
+Q5.4  Should any single signal be able to cap the weight at a maximum or minimum value
+      regardless of other signals?
+      For example: if the drop rate is extremely high, should that alone be able to
+      force the weight to -1 even if all other signals are positive?

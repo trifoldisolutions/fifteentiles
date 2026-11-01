@@ -1,0 +1,26 @@
+{
+  "name": "15tiles",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "dev": "nodemon server.js",
+    "seed:maps": "node scripts/seedMaps.js",
+    "tw": "npx tailwindcss -i ./src/input.css -o ./public/output.css --watch"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "dotenv": "^16.0.0",
+    "ejs": "^5.0.2",
+    "express": "^4.18.0",
+    "mongoose": "^8.0.0",
+    "stripe": "^22.1.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.0.0",
+    "nodemon": "^3.0.0",
+    "tailwindcss": "^3.0.0"
+  }
+}

@@ -1,0 +1,99 @@
+<div class="pointer-events-none absolute left-4 top-4 bottom-4 z-30"
+    style="width: 370px; display: flex; flex-direction: column; gap: 8px;">
+    <div class="pointer-events-auto shadow-lg backdrop-blur-sm" style="flex: 0 0 auto;">
+        <div id="topBarDefault"
+            class="flex items-center gap-1 rounded-md border border-iron-200 bg-iron-50 px-2 py-2 text-woodsmoke-700">
+            <button id="mapInfoButton" type="button"
+                class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md transition hover:bg-iron-50"
+                aria-label="Show current map details" aria-expanded="false">
+                <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"
+                    id="mapInfoButtonIcon">
+                    <path d="M0 0h24v24H0z" fill="none" />
+                    <path fill="currentColor"
+                        d="M21 6a1 1 0 0 1-1 1H4a1 1 0 1 1 0-2h16a1 1 0 0 1 1 1m0 6a1 1 0 0 1-1 1H4a1 1 0 0 1 0-2h16a1 1 0 0 1 1 1m0 6a1 1 0 0 1-1 1H4a1 1 0 0 1 0-2h16a1 1 0 0 1 1 1" />
+                </svg>
+            </button>
+
+            <button id="searchButton" type="button"
+                class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md transition hover:bg-iron-50"
+                aria-label="Search" title="Search">
+                <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"
+                    aria-hidden="true">
+                    <path d="M0 0h24v24H0z" fill="none" />
+                    <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"
+                        stroke-width="2" d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0-14 0m18 11l-6-6" />
+                </svg>
+            </button>
+
+            <button id="activeMapSummaryButton" type="button"
+                class="min-w-0 flex-1 select-none self-center rounded-md px-2 py-1 text-left transition hover:bg-iron-50"
+                aria-haspopup="listbox" aria-expanded="false" aria-label="Choose a map">
+                <span class="flex items-center gap-2">
+                    <span class="block truncate text-step-0 font-bold text-woodsmoke-900"
+                        id="activeMapLabel">Loading...</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0 text-woodsmoke-500"
+                        viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M0 0h24v24H0z" fill="none" />
+                        <path fill="currentColor"
+                            d="M18.707 8.293a1 1 0 0 1 0 1.414l-6 6a1 1 0 0 1-1.414 0l-6-6a1 1 0 0 1 1.414-1.414L12 13.586l5.293-5.293a1 1 0 0 1 1.414 0" />
+                    </svg>
+                </span>
+                <span class="block truncate text-step--1 text-woodsmoke-500" id="activeMapIntent">Loading map
+                    details...</span>
+            </button>
+
+            <button id="userProfileButton" type="button"
+                class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-iron-100 text-woodsmoke-600 transition hover:bg-iron-200"
+                aria-haspopup="dialog" aria-expanded="false" aria-label="Open user menu">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M0 0h24v24H0z" fill="none" />
+                    <path fill="currentColor"
+                        d="M12 2a5 5 0 1 1-5 5l.005-.217A5 5 0 0 1 12 2m2 12a5 5 0 0 1 5 5v1a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-1a5 5 0 0 1 5-5z" />
+                </svg>
+            </button>
+        </div>
+
+        <form id="topBarSearch"
+            class="hidden items-center gap-2 rounded-md border border-iron-200 bg-iron-50 px-3 py-2 text-woodsmoke-700">
+            <button id="backSearchButton" type="button"
+                class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md text-woodsmoke-500 transition hover:bg-iron-50 hover:text-woodsmoke-700"
+                aria-label="Back">
+                <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"
+                    aria-hidden="true">
+                    <path d="M0 0h24v24H0z" fill="none" />
+                    <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"
+                        stroke-width="2" d="M5 12h14M5 12l6 6m-6-6l6-6" />
+                </svg>
+            </button>
+            <input id="topBarSearchInput" type="search"
+                class="min-w-0 flex-1 bg-transparent text-step-0 text-woodsmoke-900 outline-none placeholder:text-woodsmoke-400"
+                placeholder="Search maps, places, or tiles..." aria-label="Search maps" />
+            <button id="goToSearchButton" type="submit"
+                class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md transition hover:bg-iron-50"
+                aria-label="Go to result">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M0 0h24v24H0z" fill="none" />
+                    <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"
+                        stroke-width="2">
+                        <path
+                            d="m13.446 2.6l7.955 7.954a2.045 2.045 0 0 1 0 2.892l-7.955 7.955a2.045 2.045 0 0 1-2.892 0l-7.955-7.955a2.045 2.045 0 0 1 0-2.892l7.955-7.955a2.045 2.045 0 0 1 2.892 0" />
+                        <path d="M9 14v-2c0-.59.414-1 1-1h5" />
+                        <path d="m13 9l2 2l-2 2" />
+                    </g>
+                </svg>
+            </button>
+        </form>
+    </div>
+
+    <div id="mapMenu"
+        class="pointer-events-auto hidden rounded-md border border-iron-200 bg-iron-50 p-1 shadow-sm"
+        role="listbox" aria-label="Available maps" style="flex: 0 0 auto;"></div>
+
+    <div id="searchResultsPanel"
+        class="pointer-events-auto hidden rounded-md border border-iron-200 bg-iron-50 p-2 shadow-sm"
+        role="listbox" aria-label="Search results" style="flex: 0 0 auto;"></div>
+
+    <div id="mapInfoPanel"
+        class="pointer-events-auto hidden rounded-md border border-iron-200 bg-iron-50 shadow-lg"
+        style="flex: 1 1 auto; min-height: 0; overflow: hidden;"></div>
+</div>

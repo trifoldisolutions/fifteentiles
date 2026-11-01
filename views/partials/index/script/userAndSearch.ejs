@@ -1,0 +1,1696 @@
+        function renderRegionTag(isActive) {
+            const code = (window.__REGION__ || 'us').toUpperCase();
+            const color = isActive ? 'text-woodsmoke-300' : 'text-woodsmoke-400';
+            return `<span class="ml-1.5 align-middle text-[10px] font-bold tracking-widest ${color}">${code}</span>`;
+        }
+
+        function renderMapMenu() {
+            mapMenu.innerHTML = '';
+
+            maps.forEach((map, index) => {
+                const isActive = index === activeMapIndex;
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.setAttribute('role', 'option');
+                item.setAttribute('aria-selected', String(isActive));
+                item.className = [
+                    'flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-step-0 transition',
+                    isActive
+                        ? 'bg-breaker-bay-700 text-woodsmoke-50'
+                        : 'text-woodsmoke-700 hover:bg-iron-100',
+                ].join(' ');
+
+                item.innerHTML = `
+                    <span>
+                        <span class="block font-medium">${map.name}${renderRegionTag(isActive)}</span>
+                        <span class="mt-0.5 block text-step--1 ${isActive ? 'text-woodsmoke-300' : 'text-woodsmoke-400'}">
+                            ${map.intent}
+                        </span>
+                    </span>
+                    <span class="h-2.5 w-2.5 rounded-full" style="background:${map.accent}"></span>
+                `;
+
+                item.addEventListener('click', () => {
+                    setActiveMap(index);
+                });
+
+                mapMenu.appendChild(item);
+            });
+        }
+
+        function renderActiveMapDetails() {
+            const activeMap = maps[activeMapIndex];
+            if (!activeMap) {
+                return;
+            }
+
+            activeMapLabel.innerHTML = escapeHtml(activeMap.name) + renderRegionTag(false);
+            activeMapIntent.textContent = activeMap.intent;
+
+            const mapClaimedRanges = Array.isArray(activeMap.claimedRanges) ? activeMap.claimedRanges : [];
+            const auctionRanges = mapClaimedRanges.filter((range) => range?.status === 'auction');
+
+            const auctionItemsMarkup = auctionRanges.length
+                ? auctionRanges.map((range) => {
+                    const rangeTitle = escapeHtml(range?.title || range?.name || `Range ${range?.id || ''}`.trim());
+                    const bounds = range?.bounds || {};
+                    const hasBounds = Number.isFinite(bounds.minCol)
+                        && Number.isFinite(bounds.maxCol)
+                        && Number.isFinite(bounds.minRow)
+                        && Number.isFinite(bounds.maxRow);
+                    const boundsLabel = hasBounds
+                        ? `X ${bounds.minCol} to ${bounds.maxCol}, Y ${bounds.minRow} to ${bounds.maxRow}`
+                        : 'Bounds unavailable';
+                    return `
+                        <li class="px-1 py-1">
+                            <p class="truncate text-step-0 font-semibold text-woodsmoke-900">${rangeTitle}</p>
+                            <p class="mt-1 text-step--1 text-woodsmoke-600">${escapeHtml(boundsLabel)}</p>
+                        </li>
+                    `;
+                }).join('')
+                : `
+                    <li class="px-1 py-1 text-step--1 text-woodsmoke-500">
+                        No ranges are currently in auction on this map.
+                    </li>
+                `;
+
+            mapInfoPanel.innerHTML = `
+                <div class="flex h-full flex-col overflow-y-auto p-3">
+                    <div class="px-1 py-1">
+                        <div class="flex items-baseline justify-between gap-2">
+                            <p class="text-step--1 font-semibold uppercase tracking-[0.08em] text-woodsmoke-500">In Auction</p>
+                            <p class="text-step--1 font-semibold text-confetti-700">${auctionRanges.length}</p>
+                        </div>
+                        <ul class="mt-2 space-y-2">${auctionItemsMarkup}</ul>
+                    </div>
+                </div>
+            `;
+        }
+
+        function escapeHtml(value) {
+            return String(value)
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#39;');
+        }
+
+        function clearToastHideTimer() {
+            if (toastState.hideTimer !== null) {
+                window.clearTimeout(toastState.hideTimer);
+                toastState.hideTimer = null;
+            }
+        }
+
+        function applyToastVariant(variant = 'info') {
+            const variantClasses = {
+                info: {
+                    card: ['border-martinique-300', 'bg-martinique-50'],
+                    iconWrap: ['bg-martinique-600', 'text-woodsmoke-50'],
+                    label: ['text-martinique-700'],
+                    message: ['text-woodsmoke-900'],
+                },
+                success: {
+                    card: ['border-breaker-bay-300', 'bg-breaker-bay-50'],
+                    iconWrap: ['bg-breaker-bay-500', 'text-woodsmoke-50'],
+                    label: ['text-breaker-bay-700'],
+                    message: ['text-woodsmoke-900'],
+                },
+                warning: {
+                    card: ['border-confetti-300', 'bg-confetti-50'],
+                    iconWrap: ['bg-confetti-500', 'text-woodsmoke-50'],
+                    label: ['text-confetti-700'],
+                    message: ['text-woodsmoke-900'],
+                },
+                error: {
+                    card: ['border-sunglo-300', 'bg-sunglo-50'],
+                    iconWrap: ['bg-sunglo-500', 'text-woodsmoke-50'],
+                    label: ['text-sunglo-700'],
+                    message: ['text-woodsmoke-900'],
+                },
+            };
+            const variantIcons = {
+                info: `
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24">
+                        <path d="M0 0h24v24H0z" fill="none" />
+                        <path fill="currentColor" d="M17 3.34a10 10 0 1 1-14.995 8.984L2 12l.005-.324A10 10 0 0 1 17 3.34m-1.293 5.953a1 1 0 0 0-1.32-.083l-.094.083L11 12.585l-1.293-1.292l-.094-.083a1 1 0 0 0-1.403 1.403l.083.094l2 2l.094.083a1 1 0 0 0 1.226 0l.094-.083l4-4l.083-.094a1 1 0 0 0-.083-1.32" />
+                    </svg>
+                `,
+                success: `
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24">
+                        <path d="M0 0h24v24H0z" fill="none" />
+                        <path fill="currentColor" d="M17 3.34a10 10 0 1 1-14.995 8.984L2 12l.005-.324A10 10 0 0 1 17 3.34m-1.293 5.953a1 1 0 0 0-1.32-.083l-.094.083L11 12.585l-1.293-1.292l-.094-.083a1 1 0 0 0-1.403 1.403l.083.094l2 2l.094.083a1 1 0 0 0 1.226 0l.094-.083l4-4l.083-.094a1 1 0 0 0-.083-1.32" />
+                    </svg>
+                `,
+                warning: `
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24">
+                        <path d="M0 0h24v24H0z" fill="none" />
+                        <path fill="currentColor" d="M17 3.34a10 10 0 1 1-14.995 8.984L2 12l.005-.324A10 10 0 0 1 17 3.34m-1.293 5.953a1 1 0 0 0-1.32-.083l-.094.083L11 12.585l-1.293-1.292l-.094-.083a1 1 0 0 0-1.403 1.403l.083.094l2 2l.094.083a1 1 0 0 0 1.226 0l.094-.083l4-4l.083-.094a1 1 0 0 0-.083-1.32" />
+                    </svg>
+                `,
+                error: `
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24">
+                        <path d="M0 0h24v24H0z" fill="none" />
+                        <path fill="currentColor" d="M17 3.34a10 10 0 1 1-14.995 8.984L2 12l.005-.324A10 10 0 0 1 17 3.34m-6.489 5.8a1 1 0 0 0-1.218 1.567L10.585 12l-1.292 1.293l-.083.094a1 1 0 0 0 1.497 1.32L12 13.415l1.293 1.292l.094.083a1 1 0 0 0 1.32-1.497L13.415 12l1.292-1.293l.083-.094a1 1 0 0 0-1.497-1.32L12 10.585l-1.293-1.292l-.094-.083z" />
+                    </svg>
+                `,
+            };
+            const styles = variantClasses[variant] || variantClasses.info;
+
+            appToastCard.className = 'pointer-events-auto inline-flex w-auto max-w-full items-center gap-3 rounded-xl border px-3 py-3';
+            appToastIcon.className = 'flex h-9 w-9 shrink-0 items-center justify-center rounded-full';
+            appToastLabel.className = 'hidden text-step--1 font-semibold uppercase tracking-[0.08em]';
+            appToastMessage.className = 'text-step-0 font-semibold leading-5';
+
+            appToastCard.classList.add(...styles.card);
+            appToastIcon.classList.add(...styles.iconWrap);
+            appToastLabel.classList.add(...styles.label);
+            appToastMessage.classList.add(...styles.message);
+            appToastIcon.innerHTML = variantIcons[variant] || variantIcons.info;
+        }
+
+        function scheduleToastHide(delayMs = toastState.durationMs) {
+            if (!Number.isFinite(delayMs) || delayMs <= 0) {
+                clearToastHideTimer();
+                toastState.remainingMs = 0;
+                toastState.startedAt = 0;
+                return;
+            }
+
+            clearToastHideTimer();
+            toastState.remainingMs = delayMs;
+            toastState.startedAt = Date.now();
+
+            toastState.hideTimer = window.setTimeout(() => {
+                hideToast();
+            }, delayMs);
+        }
+
+        function pauseToastHide() {
+            if (!toastState.isVisible || toastState.hideTimer === null) {
+                return;
+            }
+
+            const elapsedMs = Date.now() - toastState.startedAt;
+            toastState.remainingMs = Math.max(0, toastState.remainingMs - elapsedMs);
+            clearToastHideTimer();
+        }
+
+        function resumeToastHide() {
+            if (!toastState.isVisible || toastState.isHovered) {
+                return;
+            }
+
+            if (!Number.isFinite(toastState.durationMs) || toastState.durationMs <= 0) {
+                return;
+            }
+
+            scheduleToastHide(Math.max(toastState.remainingMs, 0));
+        }
+
+        function showToast(message, options = {}) {
+            const { label = 'Notification', variant = null, tone = null, durationMs = 9000 } = options;
+            const resolvedVariant = variant || tone || 'info';
+
+            toastState.durationMs = durationMs;
+            toastState.isVisible = true;
+            toastState.isHovered = false;
+            toastState.remainingMs = Number.isFinite(durationMs) && durationMs > 0 ? durationMs : 0;
+
+            applyToastVariant(resolvedVariant);
+            appToastLabel.textContent = label;
+            appToastMessage.textContent = message;
+
+            appToast.classList.remove('hidden', '-translate-y-6', 'opacity-0');
+            appToast.classList.add('translate-y-0', 'opacity-100');
+
+            scheduleToastHide(durationMs);
+        }
+
+        function hideToast() {
+            clearToastHideTimer();
+            toastState.isVisible = false;
+            toastState.isHovered = false;
+            toastState.remainingMs = 0;
+            toastState.startedAt = 0;
+
+            appToast.classList.remove('translate-y-0', 'opacity-100');
+            appToast.classList.add('-translate-y-6', 'opacity-0');
+
+            window.setTimeout(() => {
+                if (!toastState.isVisible) {
+                    appToast.classList.add('hidden');
+                }
+            }, 300);
+        }
+
+        function normalizeWalletBalanceTtk(user) {
+            const directTtkBalance = Number(user?.walletBalanceTtk);
+            if (Number.isFinite(directTtkBalance)) {
+                return directTtkBalance;
+            }
+
+            const minorTtkBalance = Number(user?.walletBalanceTtkMinor);
+            if (Number.isFinite(minorTtkBalance)) {
+                return minorTtkBalance / 100;
+            }
+
+            return 0;
+        }
+
+        function updateUserProfileButton() {
+            userProfileButton.classList.add('bg-iron-100', 'text-woodsmoke-600');
+            userProfileButton.classList.remove('bg-breaker-bay-700', 'text-woodsmoke-50');
+            userProfileButton.setAttribute('aria-label', userState.isLoggedIn ? `Open user menu for ${userState.name}` : 'Open user menu');
+            userProfileButton.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M0 0h24v24H0z" fill="none" />
+                    <path fill="currentColor" d="M12 2a5 5 0 1 1-5 5l.005-.217A5 5 0 0 1 12 2m2 12a5 5 0 0 1 5 5v1a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-1a5 5 0 0 1 5-5z" />
+                </svg>
+            `;
+        }
+
+        function renderUserStatsSummary() {
+            return [
+                `${userState.tilesOwned} tiles`,
+                `${userState.visitors} visitors`,
+                formatTtkValue(userState.walletBalanceTtk),
+            ].join(' | ');
+        }
+
+        function renderUserHeader(name, subline) {
+            return `
+                <div class="flex items-start justify-between gap-4">
+                    <div class="flex min-w-0 items-center gap-3">
+                        <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-iron-100 text-woodsmoke-600">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M0 0h24v24H0z" fill="none" />
+                                <path fill="currentColor" d="M12 2a5 5 0 1 1-5 5l.005-.217A5 5 0 0 1 12 2m2 12a5 5 0 0 1 5 5v1a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-1a5 5 0 0 1 5-5z" />
+                            </svg>
+                        </div>
+                        <div class="min-w-0 space-y-1">
+                            <p class="truncate text-step-1 font-semibold text-woodsmoke-900">${escapeHtml(name)}</p>
+                            <p class="text-step--1 text-woodsmoke-500">${escapeHtml(subline)}</p>
+                        </div>
+                    </div>
+                    <button
+                        id="closeUserProfileModalButton"
+                        type="button"
+                        class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-woodsmoke-500 transition hover:bg-iron-100 hover:text-woodsmoke-700"
+                        aria-label="Close user menu"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M0 0h24v24H0z" fill="none" />
+                            <path fill="currentColor" d="M6.707 5.293L12 10.585l5.293-5.292a1 1 0 0 1 1.414 1.414L13.415 12l5.292 5.293a1 1 0 0 1-1.414 1.414L12 13.415l-5.293 5.292a1 1 0 1 1-1.414-1.414L10.585 12L5.293 6.707a1 1 0 0 1 1.414-1.414" />
+                        </svg>
+                    </button>
+                </div>
+            `;
+        }
+
+        function getPasswordRuleStatus(password = '') {
+            const value = typeof password === 'string' ? password : '';
+            const uppercaseCount = (value.match(/[A-Z]/g) || []).length;
+            const lowercaseCount = (value.match(/[a-z]/g) || []).length;
+            const digitCount = (value.match(/\d/g) || []).length;
+            const specialCount = (value.match(/[^A-Za-z0-9]/g) || []).length;
+
+            return {
+                minLength: value.length >= 12,
+                uppercases: uppercaseCount >= 3,
+                lowercases: lowercaseCount >= 3,
+                digits: digitCount >= 3,
+                specials: specialCount >= 3,
+            };
+        }
+
+        function isSignupPasswordValid(password = '') {
+            return Object.values(getPasswordRuleStatus(password)).every(Boolean);
+        }
+
+        function renderPasswordRequirement(label, isMet, showErrors) {
+            const stateClass = isMet
+                ? 'border-breaker-bay-200 bg-breaker-bay-50 text-breaker-bay-700'
+                : showErrors
+                    ? 'border-sunglo-200 bg-sunglo-50 text-sunglo-700'
+                    : 'border-iron-200 bg-iron-50 text-woodsmoke-400';
+            const iconMarkup = isMet
+                ? `
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M0 0h24v24H0z" fill="none" />
+                        <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m5 12l5 5L20 7" />
+                    </svg>
+                `
+                : `
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M0 0h24v24H0z" fill="none" />
+                        <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 6L6 18M6 6l12 12" />
+                    </svg>
+                `;
+
+            return `
+                <div class="flex items-center gap-2 rounded-md border px-3 py-2 text-[0.72rem] font-medium ${stateClass}">
+                    ${iconMarkup}
+                    <span>${escapeHtml(label)}</span>
+                </div>
+            `;
+        }
+
+        function renderPasswordRequirements() {
+            const rules = getPasswordRuleStatus(userState.authForm.password);
+            const showErrors = userState.passwordRulesAttempted;
+
+            return `
+                <div id="passwordRequirements" class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    ${renderPasswordRequirement('3 uppercase letters', rules.uppercases, showErrors)}
+                    ${renderPasswordRequirement('3 lowercase letters', rules.lowercases, showErrors)}
+                    ${renderPasswordRequirement('3 digits', rules.digits, showErrors)}
+                    ${renderPasswordRequirement('3 special characters', rules.specials, showErrors)}
+                </div>
+            `;
+        }
+
+        function refreshPasswordRequirements() {
+            const requirements = document.getElementById('passwordRequirements');
+            if (requirements) {
+                requirements.outerHTML = renderPasswordRequirements();
+            }
+        }
+
+        function setAuthenticatedUser(user) {
+            userState.isLoggedIn = true;
+            userState.name = user?.name || user?.email || 'Account';
+            userState.email = user?.email || '';
+            userState.activeTab = userTabs.some((tab) => tab.id === userState.activeTab) ? userState.activeTab : 'profile';
+            userState.error = '';
+            userState.isSubmitting = false;
+            userState.isStartingTopUp = false;
+            userState.passwordRulesAttempted = false;
+            userState.authForm = { displayName: '', email: '', password: '', region: window.__REGION__ || 'us' };
+            userState.tilesOwned = Number.isFinite(Number(user?.tilesOwned)) ? Number(user.tilesOwned) : 0;
+            userState.visitors = Number.isFinite(Number(user?.visitors)) ? Number(user.visitors) : 0;
+            userState.netWorth = Number.isFinite(Number(user?.netWorth)) ? Number(user.netWorth) : 0;
+            userState.walletBalanceTtk = normalizeWalletBalanceTtk(user);
+            userState.topUpTtkAmount = userState.topUpTtkAmount || config.minTopUpTtk.toFixed(2);
+            updateUserProfileButton();
+        }
+
+        function setAnonymousUser() {
+            userState.isLoggedIn = false;
+            userState.name = 'Anonymous user';
+            userState.email = '';
+            userState.activeTab = 'profile';
+            userState.error = '';
+            userState.isSubmitting = false;
+            userState.isStartingTopUp = false;
+            userState.billingNotice = '';
+            userState.passwordRulesAttempted = false;
+            userState.authForm = { displayName: '', email: '', password: '', region: window.__REGION__ || 'us' };
+            userState.tilesOwned = 0;
+            userState.visitors = 0;
+            userState.netWorth = 0;
+            userState.walletBalanceTtk = 0;
+            userState.topUpTtkAmount = '';
+            clearTileSelection();
+            updateUserProfileButton();
+        }
+
+        async function applyTopUpReturnState() {
+            const currentUrl = new URL(window.location.href);
+            const topupStatus = currentUrl.searchParams.get('topup');
+
+            if (!topupStatus) {
+                return;
+            }
+
+            currentUrl.searchParams.delete('topup');
+            window.history.replaceState({}, '', `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
+
+            if (!userState.isLoggedIn) {
+                return;
+            }
+
+            userState.billingNotice = '';
+
+            if (topupStatus === 'success') {
+                try {
+                    const response = await fetch('/api/billing/reconcile', {
+                        method: 'POST',
+                    });
+                    const result = await response.json().catch(() => ({}));
+
+                    if (!response.ok) {
+                        throw new Error(result.error || 'Unable to sync completed payment.');
+                    }
+
+                    if (result.user) {
+                        setAuthenticatedUser(result.user);
+                    } else {
+                        await syncUserSession();
+                    }
+                    userState.activeTab = 'finances';
+                    showToast('Payment received.', {
+                        label: 'Payment',
+                        variant: 'success',
+                    });
+                } catch (error) {
+                    await syncUserSession();
+                    showToast(error.message || 'Unable to sync completed payment.', {
+                        label: 'Payment',
+                        variant: 'error',
+                    });
+                }
+                return;
+            }
+
+            showToast('Checkout was cancelled before any wallet balance was added.', {
+                label: 'Payment',
+                variant: 'warning',
+            });
+        }
+
+        function setAuthMode(mode) {
+            userState.authMode = mode === 'register' ? 'register' : 'login';
+            userState.error = '';
+            userState.activeTab = 'profile';
+            userState.passwordRulesAttempted = false;
+            userState.authForm.password = '';
+            renderUserProfilePanel();
+        }
+
+        function setActiveUserTab(tabId) {
+            if (!userState.isLoggedIn) {
+                return;
+            }
+
+            if (!userTabs.some((tab) => tab.id === tabId)) {
+                return;
+            }
+
+            userState.activeTab = tabId;
+            renderUserProfilePanel();
+        }
+
+        function renderUserTabs() {
+            return `
+                <div class="flex items-end gap-4 overflow-x-auto border-b border-iron-200 pb-px">
+                    ${userTabs.map((tab) => {
+                const isActive = userState.activeTab === tab.id;
+                const isDisabled = !userState.isLoggedIn && tab.id !== 'profile';
+                const className = [
+                    'user-tab-button relative -mb-px whitespace-nowrap border-b-2 px-1 pb-3 pt-1 text-step--1 font-medium transition',
+                    isActive ? 'border-breaker-bay-700 text-woodsmoke-900' : 'border-transparent text-woodsmoke-500',
+                    isDisabled ? 'cursor-not-allowed opacity-40' : userState.isLoggedIn ? 'hover:text-woodsmoke-700' : '',
+                ].join(' ');
+
+                return `
+                            <button
+                                type="button"
+                                class="${className}"
+                                data-user-tab="${tab.id}"
+                                ${isDisabled ? 'disabled aria-disabled="true"' : ''}
+                                aria-current="${isActive ? 'page' : 'false'}"
+                            >${tab.label}</button>
+                        `;
+            }).join('')} 
+                </div>
+            `;
+        }
+
+        function renderFinancesPanel() {
+            const estimatedHoldingsTtk = userState.netWorth > 0
+                ? userState.netWorth
+                : getTileTtkValue(userState.tilesOwned);
+            const tileRatePrimary = userState.showInverseTileRate
+                ? formatTileCountValue(1 / config.defaultTileUsdValue)
+                : formatUsdValue(config.defaultTileUsdValue);
+            const tileRateSecondary = userState.showInverseTileRate
+                ? 'for 1 dollar'
+                : 'for 1 tile';
+            const ttkRatePrimary = userState.showInverseTtkRate
+                ? formatTtkValue(1 / config.ttkUsdRate)
+                : formatUsdValue(config.ttkUsdRate);
+            const ttkRateSecondary = userState.showInverseTtkRate
+                ? 'for 1 dollar'
+                : '1 TTK';
+            const walletBalanceTtk = formatTtkValue(userState.walletBalanceTtk);
+            const holdingsTtk = formatTtkValue(estimatedHoldingsTtk);
+            const topUpSummary = getTopUpAmountSummary();
+            const topUpInputMin = userState.topUpInputCurrency === 'usd'
+                ? config.minTopUpUsd.toFixed(2)
+                : config.minTopUpTtk.toFixed(2);
+            const topUpInputMax = userState.topUpInputCurrency === 'usd'
+                ? config.maxTopUpUsd.toFixed(2)
+                : config.maxTopUpTtk.toFixed(2);
+            const topUpCurrencyLabel = userState.topUpInputCurrency.toUpperCase();
+            const topUpConversionHint = topUpSummary.displayAmount !== null
+                ? userState.topUpInputCurrency === 'usd'
+                    ? `${formatUsdValue(topUpSummary.displayAmount)} = ${formatTtkValue(topUpSummary.amount)}`
+                    : `${formatTtkValue(topUpSummary.displayAmount)} = ${formatUsdValue(topUpSummary.usdValue)}`
+                : '';
+            const topUpValidationMarkup = topUpSummary.error
+                ? `<p class="text-step--1 text-sunglo-600">${escapeHtml(topUpSummary.error)}</p>`
+                : '';
+            const billingNoticeMarkup = userState.billingNotice
+                ? `
+                    <p class="rounded-md border border-breaker-bay-200 bg-breaker-bay-50 px-3 py-2 text-step--1 text-breaker-bay-700">${escapeHtml(userState.billingNotice)}</p>
+                `
+                : '';
+            const topUpLoadingIcon = `
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M0 0h24v24H0z" fill="none" />
+                    <circle cx="4" cy="12" r="3" fill="currentColor">
+                        <animate id="SVG7x14Dcom" fill="freeze" attributeName="opacity" begin="0;SVGqSjG0dUp.end-0.25s" dur="0.75s" values="1;.2" />
+                    </circle>
+                    <circle cx="12" cy="12" r="3" fill="currentColor" opacity=".4">
+                        <animate fill="freeze" attributeName="opacity" begin="SVG7x14Dcom.begin+0.15s" dur="0.75s" values="1;.2" />
+                    </circle>
+                    <circle cx="20" cy="12" r="3" fill="currentColor" opacity=".3">
+                        <animate id="SVGqSjG0dUp" fill="freeze" attributeName="opacity" begin="SVG7x14Dcom.begin+0.3s" dur="0.75s" values="1;.2" />
+                    </circle>
+                </svg>
+            `;
+            const rateSwitchIcon = `
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M0 0h24v24H0z" fill="none" />
+                    <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 3v18m3-15L7 3L4 6m16 12l-3 3l-3-3m3 3V3" />
+                </svg>
+            `;
+
+            return `
+                <div class="grid gap-3">
+                    <div class="overflow-x-auto">
+                        <div class="flex min-w-[18rem] items-stretch rounded-md border border-iron-200 bg-iron-50">
+                            <div class="flex min-w-0 flex-1 items-center justify-between px-3 py-2">
+                                <button
+                                    id="toggleTileRateViewButton"
+                                    type="button"
+                                    class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-woodsmoke-500 transition hover:bg-iron-50 hover:text-woodsmoke-700"
+                                    aria-label="Switch tile rate view"
+                                >${rateSwitchIcon}</button>
+                                <div class="min-w-0 flex-1 pl-3 text-right">
+                                    <p class="truncate text-step-0 font-semibold text-woodsmoke-900">${tileRatePrimary}</p>
+                                    <p class="mt-1 truncate text-step--1 text-woodsmoke-500">${tileRateSecondary}</p>
+                                </div>
+                            </div>
+                            <div class="w-px self-stretch bg-iron-200"></div>
+                            <div class="flex min-w-0 flex-1 items-center justify-between px-3 py-2">
+                                <div class="min-w-0 flex-1 pr-3">
+                                    <p class="truncate text-step-0 font-semibold text-woodsmoke-900">${ttkRatePrimary}</p>
+                                    <p class="mt-1 truncate text-step--1 text-woodsmoke-500">${ttkRateSecondary}</p>
+                                </div>
+                                <button
+                                    id="toggleTtkRateViewButton"
+                                    type="button"
+                                    class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-woodsmoke-500 transition hover:bg-iron-50 hover:text-woodsmoke-700"
+                                    aria-label="Switch TTK rate view"
+                                >${rateSwitchIcon}</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-iron-50 px-1 py-1">
+                        <div class="grid gap-2">
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <p class="text-step--1 text-woodsmoke-500">Wallet balance</p>
+                                    <p class="text-step-1 font-semibold text-woodsmoke-900">${walletBalanceTtk}</p>
+                                    <p class="mt-1 text-step--1 text-woodsmoke-400">Estimated holdings: ${holdingsTtk}</p>
+                                </div>
+                                <button
+                                    id="cashOutButton"
+                                    type="button"
+                                    class="flex h-12 shrink-0 items-center justify-center rounded-md bg-breaker-bay-700 px-5 text-step--1 font-semibold text-woodsmoke-50 transition hover:bg-breaker-bay-800"
+                                >Cash Out</button>
+                            </div>
+                            <div class="bg-iron-50 py-4">
+                                <div class="flex items-stretch gap-2">
+                                    <div class="flex min-w-0 flex-1 overflow-hidden rounded-md border border-iron-200 bg-iron-50 transition focus-within:border-iron-400 focus-within:bg-iron-50">
+                                        <input
+                                            id="topUpTtkAmountInput"
+                                            type="number"
+                                            inputmode="decimal"
+                                            min="${topUpInputMin}"
+                                            max="${topUpInputMax}"
+                                            step="0.01"
+                                            value="${escapeHtml(userState.topUpTtkAmount)}"
+                                            class="h-12 w-full min-w-0 bg-transparent px-4 text-step-0 text-woodsmoke-900 outline-none"
+                                            placeholder="${topUpInputMin}"
+                                        />
+                                        <button
+                                            id="topUpCurrencyToggleButton"
+                                            type="button"
+                                            class="flex shrink-0 items-center border-l border-iron-200 bg-iron-50 px-4 text-step--1 font-semibold tracking-[0.08em] text-woodsmoke-600 transition hover:bg-iron-50 hover:text-woodsmoke-900"
+                                            aria-label="Switch top up currency"
+                                        >${topUpCurrencyLabel}</button>
+                                    </div>
+                                    <button
+                                        id="topUpTtkButton"
+                                        type="button"
+                                        class="flex h-12 min-w-[4.75rem] shrink-0 items-center justify-center rounded-md border border-iron-200 bg-iron-100 px-5 text-step--1 font-semibold text-woodsmoke-700 transition hover:bg-iron-200 disabled:cursor-not-allowed disabled:border-iron-200 disabled:bg-iron-100 disabled:text-woodsmoke-400"
+                                        ${(userState.isStartingTopUp || Boolean(topUpSummary.error)) ? 'disabled' : ''}
+                                    >${userState.isStartingTopUp ? topUpLoadingIcon : 'Top Up'}</button>
+                                </div>
+                                <p id="topUpConversionHint" class="mt-2 text-step--1 text-woodsmoke-400 ${topUpConversionHint ? '' : 'hidden'}">${escapeHtml(topUpConversionHint)}</p>
+                                <div id="topUpValidationWrap" class="mt-2 ${topUpValidationMarkup ? '' : 'hidden'}">
+                                    <p id="topUpValidationMessage" class="text-step--1 text-sunglo-600">${topUpSummary.error ? escapeHtml(topUpSummary.error) : ''}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    ${billingNoticeMarkup}
+                </div>
+            `;
+        }
+
+        function renderSignedInTabPanel() {
+            switch (userState.activeTab) {
+                case 'profile':
+                    return `
+                        <div class="rounded-xl border border-iron-200 bg-iron-50 px-3 py-3 text-step--1 text-woodsmoke-600">
+                            Profile details will live here as we expand the account experience.
+                        </div>
+                    `;
+                case 'finances':
+                    return `
+                        ${renderFinancesPanel()}
+                    `;
+                case 'settings':
+                    return `
+                        <div class="rounded-xl border border-iron-200 bg-iron-50 px-3 py-3 text-step--1 text-woodsmoke-600">
+                            Account settings and preferences will appear here.
+                        </div>
+                    `;
+                case 'danger-zone':
+                    return `
+                        <div class="grid gap-2">
+                            <div class="rounded-xl border border-sunglo-200 bg-sunglo-50 px-3 py-3 text-step--1 text-sunglo-700">
+                                Sensitive account actions will live here.
+                            </div>
+                            <button
+                                id="signOutButton"
+                                type="button"
+                                class="h-12 rounded-md border border-iron-200 px-3 text-left text-step--1 text-woodsmoke-700 transition hover:bg-iron-50"
+                            >Sign out</button>
+                        </div>
+                    `;
+                case 'help':
+                    return `
+                        <div class="rounded-xl border border-iron-200 bg-iron-50 px-3 py-3 text-step--1 text-woodsmoke-600">
+                            Support, docs, and account help links will live here.
+                        </div>
+                    `;
+                default:
+                    return '';
+            }
+        }
+
+        function renderAnonymousProfilePanel() {
+            const isRegisterMode = userState.authMode === 'register';
+            const submitLabel = isRegisterMode ? 'Create account' : 'Log in';
+            const alternateLabel = isRegisterMode ? 'Already have an account? Log in' : 'Need an account? Create one';
+            const submitButtonContent = userState.isSubmitting
+                ? `
+                    <span class="flex items-center justify-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 animate-spin" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M0 0h24v24H0z" fill="none" />
+                            <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3a9 9 0 1 0 9 9" />
+                        </svg>
+                        <span>${isRegisterMode ? 'Signing up' : 'Logging in'}</span>
+                    </span>
+                `
+                : submitLabel;
+
+            return `
+                <form id="authForm" class="grid gap-3">
+                    ${isRegisterMode ? `
+                        <label class="grid gap-1 text-step--1 text-woodsmoke-600">
+                            <span class="font-medium text-woodsmoke-700">Display name</span>
+                            <input
+                                id="authDisplayNameInput"
+                                name="displayName"
+                                type="text"
+                                autocomplete="name"
+                                value="${escapeHtml(userState.authForm.displayName)}"
+                                class="h-12 rounded-md border border-iron-200 px-3 text-step-0 text-woodsmoke-900 outline-none transition focus:border-iron-400"
+                                placeholder="Map explorer"
+                                required
+                            />
+                        </label>
+                        <div class="grid gap-1 text-step--1 text-woodsmoke-600">
+                            <span class="font-medium text-woodsmoke-700">Region</span>
+                            <div class="relative">
+                                <button
+                                    id="authRegionTrigger"
+                                    type="button"
+                                    class="flex h-12 w-full items-center justify-between rounded-md border border-iron-200 px-3 text-step-0 text-woodsmoke-900 outline-none transition hover:border-iron-300 focus:border-iron-400"
+                                    aria-haspopup="listbox"
+                                    aria-expanded="false"
+                                >
+                                    <span id="authRegionLabel">${(window.__REGIONS__ || []).find((r) => r.code === userState.authForm.region)?.name || 'Select a region'}</span>
+                                    <svg id="authRegionChevron" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-woodsmoke-400 transition-transform duration-150" viewBox="0 0 24 24" aria-hidden="true">
+                                        <path d="M0 0h24v24H0z" fill="none" />
+                                        <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 9 6 6 6-6" />
+                                    </svg>
+                                </button>
+                                <div
+                                    id="authRegionList"
+                                    role="listbox"
+                                    class="absolute left-0 right-0 top-full z-50 mt-1 hidden max-h-52 overflow-y-auto rounded-md border border-iron-200 bg-white shadow-lg"
+                                >
+                                    ${(window.__REGIONS__ || []).map((r) => `
+                                        <button
+                                            type="button"
+                                            role="option"
+                                            aria-selected="${r.code === userState.authForm.region ? 'true' : 'false'}"
+                                            data-region-code="${r.code}"
+                                            data-region-name="${r.name}"
+                                            class="flex w-full items-center justify-between px-3 py-2.5 text-left text-step-0 transition ${r.code === userState.authForm.region ? 'bg-iron-50 font-medium text-woodsmoke-900' : 'text-woodsmoke-700 hover:bg-iron-50'}"
+                                        >
+                                            <span>${r.name}</span>
+                                            ${r.code === userState.authForm.region ? `
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-breaker-bay-700" viewBox="0 0 24 24" aria-hidden="true">
+                                                    <path d="M0 0h24v24H0z" fill="none" />
+                                                    <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12l5 5L20 7" />
+                                                </svg>
+                                            ` : ''}
+                                        </button>
+                                    `).join('')}
+                                </div>
+                                <input type="hidden" id="authRegionInput" name="region" value="${escapeHtml(userState.authForm.region)}" />
+                            </div>
+                        </div>
+                    ` : ''}
+                    <label class="grid gap-1 text-step--1 text-woodsmoke-600">
+                        <span class="font-medium text-woodsmoke-700">Email</span>
+                        <input
+                            id="authEmailInput"
+                            name="email"
+                            type="email"
+                            autocomplete="email"
+                            value="${escapeHtml(userState.authForm.email)}"
+                            class="h-12 rounded-md border border-iron-200 px-3 text-step-0 text-woodsmoke-900 outline-none transition focus:border-iron-400"
+                            placeholder="you@example.com"
+                            required
+                        />
+                    </label>
+                    <label class="grid gap-1 text-step--1 text-woodsmoke-600">
+                        <span class="font-medium text-woodsmoke-700">Password</span>
+                        <div class="relative">
+                            <input
+                                id="authPasswordInput"
+                                name="password"
+                                type="password"
+                                autocomplete="${isRegisterMode ? 'new-password' : 'current-password'}"
+                                value="${escapeHtml(userState.authForm.password)}"
+                                class="h-12 w-full rounded-md border border-iron-200 px-3 pr-12 text-step-0 text-woodsmoke-900 outline-none transition focus:border-iron-400"
+                                placeholder="At least 12 characters"
+                                required
+                            />
+                            <button
+                                id="authPasswordToggleButton"
+                                type="button"
+                                class="absolute inset-y-0 right-0 flex h-12 w-12 items-center justify-center text-woodsmoke-500 transition hover:text-woodsmoke-700"
+                                aria-label="Show password"
+                                aria-pressed="false"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M0 0h24v24H0z" fill="none" />
+                                    <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+                                        <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0-4 0" />
+                                        <path d="M21 12q-3.6 6-9 6t-9-6q3.6-6 9-6t9 6" />
+                                    </g>
+                                </svg>
+                            </button>
+                        </div>
+                    </label>
+                    ${isRegisterMode ? renderPasswordRequirements() : ''}
+                    ${!isRegisterMode ? `
+                        <button
+                            id="forgotPasswordButton"
+                            type="button"
+                            class="-mt-1 text-center text-step--1 text-woodsmoke-500 transition hover:text-woodsmoke-700"
+                        >Forgot password</button>
+                    ` : ''}
+                    ${userState.error ? `
+                        <p class="rounded-md border border-sunglo-200 bg-sunglo-50 px-3 py-2 text-step--1 text-sunglo-700">${escapeHtml(userState.error)}</p>
+                    ` : ''}
+                    <div class="grid gap-2">
+                        <button
+                            id="authSubmitButton"
+                            type="submit"
+                            class="h-12 rounded-md bg-breaker-bay-700 px-3 text-step--1 font-medium capitalize text-woodsmoke-50 transition hover:bg-breaker-bay-800 disabled:cursor-not-allowed disabled:opacity-60"
+                            ${userState.isSubmitting ? 'disabled' : ''}
+                        >${submitButtonContent}</button>
+                        <button
+                            id="googleAuthButton"
+                            type="button"
+                            class="flex h-12 items-center justify-center gap-3 rounded-md border border-iron-200 px-3 text-step--1 font-medium text-woodsmoke-700 transition hover:bg-iron-50"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24">
+                                <path d="M0 0h24v24H0z" fill="none" />
+                                <path fill="currentColor" d="M12 2a9.96 9.96 0 0 1 6.29 2.226a1 1 0 0 1 .04 1.52l-1.51 1.362a1 1 0 0 1-1.265.06a6 6 0 1 0 2.103 6.836l.001-.004h-3.66a1 1 0 0 1-.992-.883L13 13v-2a1 1 0 0 1 1-1h6.945a1 1 0 0 1 .994.89q.06.55.061 1.11c0 5.523-4.477 10-10 10S2 17.523 2 12S6.477 2 12 2" />
+                            </svg>
+                            <span>${isRegisterMode ? 'Sign Up with Google' : 'Log In with Google'}</span>
+                        </button>
+                        <button
+                            id="toggleAuthModeButton"
+                            type="button"
+                            class="h-12 px-3 text-center text-step--1 text-woodsmoke-700 transition hover:text-woodsmoke-900"
+                        >${alternateLabel}</button>
+                    </div>
+                </form>
+            `;
+        }
+
+        async function syncUserSession() {
+            try {
+                const response = await fetch('/api/auth/session');
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch session: ${response.status}`);
+                }
+
+                const payload = await response.json();
+                if (payload.authenticated) {
+                    setAuthenticatedUser(payload.user);
+                    return payload;
+                }
+
+                setAnonymousUser();
+                return payload;
+            } catch (error) {
+                setAnonymousUser();
+                console.error('Unable to load user session', error);
+                return null;
+            }
+        }
+
+        function renderSearchResults(query = '') {
+            searchResultsPanel.innerHTML = '';
+
+            if (!isSearchOpen) {
+                searchResultsPanel.classList.add('hidden');
+                return;
+            }
+
+            const trimmedQuery = query.trim();
+            searchResultsPanel.classList.remove('hidden');
+
+            if (!trimmedQuery) {
+                renderRecentSearches();
+                return;
+            }
+
+            if (!searchResults.length) {
+                searchResultsPanel.innerHTML = `
+                    <div class="rounded-md px-3 py-3 text-step--1 text-woodsmoke-500">
+                        No matches found for "${escapeHtml(trimmedQuery)}".
+                    </div>
+                `;
+                return;
+            }
+
+            searchResults.forEach((result) => {
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.setAttribute('role', 'option');
+                item.className = 'flex w-full items-start justify-between rounded-md px-3 py-2 text-left transition hover:bg-iron-100';
+                item.innerHTML = `
+                    <span class="min-w-0">
+                        <span class="block truncate text-step-0 font-medium text-woodsmoke-900">${escapeHtml(result.primaryLabel)}</span>
+                        <span class="mt-0.5 block truncate text-step--1 text-woodsmoke-500">${escapeHtml(result.secondaryLabel)}</span>
+                    </span>
+                    <span class="ml-3 shrink-0 rounded-full bg-iron-100 px-2 py-1 text-[0.7rem] font-medium text-woodsmoke-600">
+                        ${escapeHtml(result.badgeLabel)}
+                    </span>
+                `;
+                item.addEventListener('click', () => {
+                    setActiveMap(result.mapIndex);
+                    closeSearchBar();
+                });
+                searchResultsPanel.appendChild(item);
+            });
+        }
+
+        function renderRecentSearches() {
+            searchResultsPanel.innerHTML = '';
+
+            if (!recentSearches.length) {
+                searchResultsPanel.classList.add('hidden');
+                return;
+            }
+
+            const header = document.createElement('div');
+            header.className = 'px-3 pb-2 pt-1 text-[0.7rem] font-semibold uppercase tracking-[0.08em] text-woodsmoke-400';
+            header.textContent = 'Recent searches';
+            searchResultsPanel.appendChild(header);
+
+            recentSearches.forEach((recentQuery) => {
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'flex w-full items-center justify-between rounded-md px-3 py-2 text-left transition hover:bg-iron-100';
+                item.innerHTML = `
+                    <span class="truncate text-step--1 text-woodsmoke-700">${escapeHtml(recentQuery)}</span>
+                    <span class="ml-3 shrink-0 text-woodsmoke-400">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M0 0h24v24H0z" fill="none" />
+                            <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0-14 0m18 11l-6-6" />
+                        </svg>
+                    </span>
+                `;
+                item.addEventListener('click', () => {
+                    topBarSearchInput.value = recentQuery;
+                    updateSearchResults();
+                    topBarSearchInput.focus();
+                });
+                searchResultsPanel.appendChild(item);
+            });
+        }
+
+        function rememberRecentSearch(query) {
+            const trimmedQuery = query.trim();
+            if (!trimmedQuery) {
+                return;
+            }
+
+            recentSearches = [
+                trimmedQuery,
+                ...recentSearches.filter((entry) => entry.toLowerCase() !== trimmedQuery.toLowerCase()),
+            ].slice(0, 6);
+        }
+
+        function scoreMapAgainstQuery(map, mapIndex, query) {
+            const normalizedQuery = query.trim().toLowerCase();
+            if (!normalizedQuery) {
+                return null;
+            }
+
+            const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
+            const searchableTileTypes = [...new Set((map.tiles || []).map((tile) => tile.type).filter(Boolean))];
+            const fields = [
+                { value: map.name || '', weight: 7, label: 'name' },
+                { value: map.intent || '', weight: 5, label: 'intent' },
+                { value: map.id || '', weight: 4, label: 'id' },
+                { value: searchableTileTypes.join(' '), weight: 3, label: 'tiles' },
+            ];
+
+            let score = mapIndex === activeMapIndex ? 1.5 : 0;
+            let matchedField = null;
+
+            for (const token of tokens) {
+                let tokenMatched = false;
+
+                for (const field of fields) {
+                    const normalizedField = field.value.toLowerCase();
+                    if (!normalizedField) {
+                        continue;
+                    }
+
+                    if (normalizedField === token) {
+                        score += field.weight + 3;
+                        tokenMatched = true;
+                        matchedField = matchedField || field.label;
+                        continue;
+                    }
+
+                    if (normalizedField.startsWith(token)) {
+                        score += field.weight + 2;
+                        tokenMatched = true;
+                        matchedField = matchedField || field.label;
+                        continue;
+                    }
+
+                    if (normalizedField.includes(token)) {
+                        score += field.weight;
+                        tokenMatched = true;
+                        matchedField = matchedField || field.label;
+                    }
+                }
+
+                if (!tokenMatched) {
+                    return null;
+                }
+            }
+
+            let primaryLabel = map.name;
+            let secondaryLabel = map.intent;
+
+            if (matchedField === 'tiles' && searchableTileTypes.length) {
+                primaryLabel = map.name;
+                secondaryLabel = `Tile types: ${searchableTileTypes.slice(0, 4).join(', ')}`;
+            }
+
+            return {
+                mapIndex,
+                score,
+                primaryLabel,
+                secondaryLabel,
+                badgeLabel: mapIndex === activeMapIndex ? 'Current map' : map.name,
+            };
+        }
+
+        function updateSearchResults() {
+            const query = topBarSearchInput.value;
+            if (!query.trim()) {
+                searchResults = [];
+                renderSearchResults(query);
+                return;
+            }
+
+            searchResults = maps
+                .map((map, mapIndex) => scoreMapAgainstQuery(map, mapIndex, query))
+                .filter(Boolean)
+                .sort((left, right) => right.score - left.score || left.mapIndex - right.mapIndex)
+                .slice(0, 8);
+
+            renderSearchResults(query);
+        }
+
+        function openSearchBar() {
+            closeMapMenu();
+            closeMapInfoPanel();
+            closeUserProfilePanel();
+            isSearchOpen = true;
+            topBarDefault.classList.add('hidden');
+            topBarSearch.classList.remove('hidden');
+            topBarSearch.classList.add('flex');
+            renderSearchResults(topBarSearchInput.value);
+            window.requestAnimationFrame(() => {
+                topBarSearchInput.focus();
+                topBarSearchInput.select();
+            });
+        }
+
+        function closeSearchBar() {
+            isSearchOpen = false;
+            topBarSearch.classList.add('hidden');
+            topBarSearch.classList.remove('flex');
+            topBarDefault.classList.remove('hidden');
+            topBarSearchInput.value = '';
+            searchResults = [];
+            searchResultsPanel.classList.add('hidden');
+        }
+
+        function toggleSearchBar() {
+            if (isSearchOpen) {
+                closeSearchBar();
+                return;
+            }
+
+            openSearchBar();
+        }
+
+        function submitSearchQuery() {
+            const query = topBarSearchInput.value.trim();
+            if (!query) {
+                topBarSearchInput.focus();
+                return;
+            }
+
+            rememberRecentSearch(query);
+            updateSearchResults();
+            if (searchResults.length) {
+                setActiveMap(searchResults[0].mapIndex);
+                closeSearchBar();
+                return;
+            }
+
+            renderSearchResults(query);
+        }
+
+        function renderUserProfilePanel() {
+            if (userState.isLoggedIn) {
+                userProfileModalCard.innerHTML = `
+                    <div class="space-y-4">
+                        ${renderUserHeader(userState.name, renderUserStatsSummary())}
+                        ${renderUserTabs()}
+                        <div class="pt-1">
+                            ${renderSignedInTabPanel()}
+                        </div>
+                    </div>
+                `;
+                wireUserProfileModalActions();
+                return;
+            }
+
+            userProfileModalCard.innerHTML = `
+                <div class="space-y-4">
+                    ${renderUserHeader('Anonymous user', renderUserStatsSummary())}
+                    ${renderUserTabs()}
+                    <div class="pt-1">
+                        ${renderAnonymousProfilePanel()}
+                    </div>
+                </div>
+            `;
+            wireUserProfileModalActions();
+        }
+
+        function wireUserProfileModalActions() {
+            const closeButton = document.getElementById('closeUserProfileModalButton');
+            if (closeButton) {
+                closeButton.addEventListener('click', () => {
+                    closeUserProfilePanel();
+                });
+            }
+
+            const toggleAuthModeButton = document.getElementById('toggleAuthModeButton');
+            if (toggleAuthModeButton) {
+                toggleAuthModeButton.addEventListener('click', () => {
+                    setAuthMode(userState.authMode === 'login' ? 'register' : 'login');
+                });
+            }
+
+            const authForm = document.getElementById('authForm');
+            if (authForm) {
+                authForm.addEventListener('submit', (event) => {
+                    event.preventDefault();
+                    submitAuthForm(new FormData(authForm));
+                });
+            }
+
+            const displayNameInput = document.getElementById('authDisplayNameInput');
+            if (displayNameInput) {
+                displayNameInput.addEventListener('input', (event) => {
+                    userState.authForm.displayName = event.target.value;
+                });
+            }
+
+            const emailInput = document.getElementById('authEmailInput');
+            if (emailInput) {
+                emailInput.addEventListener('input', (event) => {
+                    userState.authForm.email = event.target.value;
+                });
+            }
+
+            const signOutButton = document.getElementById('signOutButton');
+            if (signOutButton) {
+                signOutButton.addEventListener('click', () => {
+                    logoutUser();
+                });
+            }
+
+            const toggleTileRateViewButton = document.getElementById('toggleTileRateViewButton');
+            if (toggleTileRateViewButton) {
+                toggleTileRateViewButton.addEventListener('click', () => {
+                    userState.showInverseTileRate = !userState.showInverseTileRate;
+                    renderUserProfilePanel();
+                });
+            }
+
+            const toggleTtkRateViewButton = document.getElementById('toggleTtkRateViewButton');
+            if (toggleTtkRateViewButton) {
+                toggleTtkRateViewButton.addEventListener('click', () => {
+                    userState.showInverseTtkRate = !userState.showInverseTtkRate;
+                    renderUserProfilePanel();
+                });
+            }
+
+            const topUpAmountInput = document.getElementById('topUpTtkAmountInput');
+            if (topUpAmountInput) {
+                topUpAmountInput.addEventListener('input', (event) => {
+                    userState.topUpTtkAmount = event.target.value;
+                    refreshTopUpInputFeedback();
+                });
+
+                topUpAmountInput.addEventListener('change', (event) => {
+                    userState.topUpTtkAmount = event.target.value;
+                    renderUserProfilePanel();
+                });
+            }
+
+            const topUpCurrencyToggleButton = document.getElementById('topUpCurrencyToggleButton');
+            if (topUpCurrencyToggleButton) {
+                topUpCurrencyToggleButton.addEventListener('click', () => {
+                    const summary = getTopUpAmountSummary();
+                    const nextCurrency = userState.topUpInputCurrency === 'ttk' ? 'usd' : 'ttk';
+                    const nextValue = summary.amount === null
+                        ? (nextCurrency === 'usd' ? config.minTopUpUsd.toFixed(2) : config.minTopUpTtk.toFixed(2))
+                        : nextCurrency === 'usd'
+                            ? summary.usdValue.toFixed(2)
+                            : summary.amount.toFixed(2);
+
+                    userState.topUpInputCurrency = nextCurrency;
+                    userState.topUpTtkAmount = nextValue;
+                    renderUserProfilePanel();
+                });
+            }
+
+            const topUpButton = document.getElementById('topUpTtkButton');
+            if (topUpButton) {
+                topUpButton.addEventListener('click', () => {
+                    startTopUpCheckout();
+                });
+            }
+
+            const cashOutButton = document.getElementById('cashOutButton');
+            if (cashOutButton) {
+                cashOutButton.addEventListener('click', () => {
+                    showToast('Cash out is not available yet.', {
+                        label: 'Wallet',
+                        variant: 'warning',
+                    });
+                });
+            }
+
+            const passwordToggleButton = document.getElementById('authPasswordToggleButton');
+            const passwordInput = document.getElementById('authPasswordInput');
+            if (passwordToggleButton && passwordInput) {
+                const hiddenIcon = `
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M0 0h24v24H0z" fill="none" />
+                        <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+                            <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0-4 0" />
+                            <path d="M21 12q-3.6 6-9 6t-9-6q3.6-6 9-6t9 6" />
+                        </g>
+                    </svg>
+                `;
+                const visibleIcon = `
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M0 0h24v24H0z" fill="none" />
+                        <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 9q-3.6 4-9 4T3 9m0 6l2.5-3.8M21 14.976L18.508 11.2M9 17l.5-4m5.5 4l-.5-4" />
+                    </svg>
+                `;
+
+                passwordToggleButton.addEventListener('click', () => {
+                    const isHidden = passwordInput.type === 'password';
+                    passwordInput.type = isHidden ? 'text' : 'password';
+                    passwordToggleButton.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+                    passwordToggleButton.setAttribute('aria-pressed', String(isHidden));
+                    passwordToggleButton.innerHTML = isHidden ? visibleIcon : hiddenIcon;
+                });
+
+                passwordInput.addEventListener('input', (event) => {
+                    userState.authForm.password = event.target.value;
+                    if (userState.authMode === 'register') {
+                        refreshPasswordRequirements();
+                    }
+                });
+            }
+
+            const regionTrigger = document.getElementById('authRegionTrigger');
+            const regionList = document.getElementById('authRegionList');
+            const regionInput = document.getElementById('authRegionInput');
+            const regionLabel = document.getElementById('authRegionLabel');
+            const regionChevron = document.getElementById('authRegionChevron');
+            if (regionTrigger && regionList) {
+                let outsideClickHandler = null;
+
+                function openRegionDropdown() {
+                    regionList.classList.remove('hidden');
+                    regionTrigger.setAttribute('aria-expanded', 'true');
+                    regionTrigger.classList.add('border-iron-400');
+                    regionChevron.classList.add('rotate-180');
+                    outsideClickHandler = (e) => {
+                        if (!regionTrigger.contains(e.target) && !regionList.contains(e.target)) {
+                            closeRegionDropdown();
+                        }
+                    };
+                    setTimeout(() => document.addEventListener('click', outsideClickHandler), 0);
+                }
+
+                function closeRegionDropdown() {
+                    regionList.classList.add('hidden');
+                    regionTrigger.setAttribute('aria-expanded', 'false');
+                    regionTrigger.classList.remove('border-iron-400');
+                    regionChevron.classList.remove('rotate-180');
+                    if (outsideClickHandler) {
+                        document.removeEventListener('click', outsideClickHandler);
+                        outsideClickHandler = null;
+                    }
+                }
+
+                regionTrigger.addEventListener('click', () => {
+                    regionList.classList.contains('hidden') ? openRegionDropdown() : closeRegionDropdown();
+                });
+
+                regionList.querySelectorAll('[data-region-code]').forEach((btn) => {
+                    btn.addEventListener('click', () => {
+                        const code = btn.dataset.regionCode;
+                        const name = btn.dataset.regionName;
+                        regionInput.value = code;
+                        regionLabel.textContent = name;
+                        userState.authForm.region = code;
+                        regionList.querySelectorAll('[data-region-code]').forEach((b) => {
+                            const isSelected = b.dataset.regionCode === code;
+                            b.setAttribute('aria-selected', String(isSelected));
+                            b.classList.toggle('bg-iron-50', isSelected);
+                            b.classList.toggle('font-medium', isSelected);
+                            b.classList.toggle('text-woodsmoke-900', isSelected);
+                            b.classList.toggle('text-woodsmoke-700', !isSelected);
+                        });
+                        closeRegionDropdown();
+                    });
+                });
+            }
+
+            const forgotPasswordButton = document.getElementById('forgotPasswordButton');
+            if (forgotPasswordButton) {
+                forgotPasswordButton.addEventListener('click', () => {
+                    userState.error = 'Password reset is not available yet.';
+                    renderUserProfilePanel();
+                });
+            }
+
+            const googleAuthButton = document.getElementById('googleAuthButton');
+            if (googleAuthButton) {
+                googleAuthButton.addEventListener('click', () => {
+                    userState.error = 'Google sign-in is not available yet.';
+                    renderUserProfilePanel();
+                });
+            }
+
+            const tabButtons = document.querySelectorAll('[data-user-tab]');
+            tabButtons.forEach((button) => {
+                button.addEventListener('click', () => {
+                    const tabId = button.getAttribute('data-user-tab');
+                    if (tabId) {
+                        setActiveUserTab(tabId);
+                    }
+                });
+            });
+        }
+
+        async function submitAuthForm(formData) {
+            userState.authForm.displayName = String(formData.get('displayName') || '');
+            userState.authForm.email = String(formData.get('email') || '');
+            userState.authForm.password = String(formData.get('password') || '');
+            if (formData.get('region')) {
+                userState.authForm.region = String(formData.get('region'));
+            }
+            userState.error = '';
+
+            if (userState.authMode === 'register' && !isSignupPasswordValid(userState.authForm.password)) {
+                userState.passwordRulesAttempted = true;
+                userState.error = 'Please satisfy every password requirement before creating your account.';
+                renderUserProfilePanel();
+                return;
+            }
+
+            userState.passwordRulesAttempted = false;
+            userState.isSubmitting = true;
+            renderUserProfilePanel();
+
+            const endpoint = userState.authMode === 'register' ? '/api/auth/register' : '/api/auth/login';
+            const payload = {
+                email: userState.authForm.email,
+                password: userState.authForm.password,
+            };
+
+            if (userState.authMode === 'register') {
+                payload.displayName = userState.authForm.displayName;
+                payload.region = userState.authForm.region || window.__REGION__ || 'us';
+            }
+
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(payload),
+                });
+
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(result.error || 'Authentication failed.');
+                }
+
+                setAuthenticatedUser(result.user || {});
+                closeUserProfilePanel();
+                await loadMaps();
+            } catch (error) {
+                userState.isSubmitting = false;
+                userState.error = error.message || 'Authentication failed.';
+                userState.passwordRulesAttempted = userState.authMode === 'register';
+                renderUserProfilePanel();
+            }
+        }
+
+        async function logoutUser() {
+            try {
+                const response = await fetch('/api/auth/logout', {
+                    method: 'POST',
+                });
+
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(result.error || 'Unable to sign out.');
+                }
+
+                setAnonymousUser();
+                closeUserProfilePanel();
+                await loadMaps();
+            } catch (error) {
+                userState.error = error.message || 'Unable to sign out.';
+                renderUserProfilePanel();
+            }
+        }
+
+        async function startTopUpCheckout() {
+            if (!userState.isLoggedIn || userState.isStartingTopUp) {
+                return;
+            }
+
+            const topUpSummary = getTopUpAmountSummary();
+            if (topUpSummary.error || topUpSummary.amount === null) {
+                userState.billingNotice = topUpSummary.error || 'Enter a valid TTK amount.';
+                renderUserProfilePanel();
+                return;
+            }
+
+            userState.error = '';
+            userState.billingNotice = '';
+            userState.isStartingTopUp = true;
+            renderUserProfilePanel();
+
+            try {
+                const response = await fetch('/api/billing/top-up-session', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        ttkAmount: topUpSummary.amount,
+                    }),
+                });
+
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(result.error || 'Unable to start checkout.');
+                }
+
+                if (!result.url) {
+                    throw new Error('Stripe checkout URL was missing.');
+                }
+
+                window.location.href = result.url;
+            } catch (error) {
+                userState.isStartingTopUp = false;
+                userState.billingNotice = error.message || 'Unable to start checkout.';
+                renderUserProfilePanel();
+            }
+        }
+
+        async function recordMapVisit(mapId) {
+            try {
+                await fetch('/api/session/map-visit', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ mapId }),
+                });
+            } catch (error) {
+                console.error('Unable to persist last visited map', error);
+            }
+        }
+
+        function getInitialRangeDeepLinkState() {
+            const params = new URLSearchParams(window.location.search || '');
+            const mapId = String(params.get('map') || '').trim();
+            const rangeText = String(params.get('range') || '').trim();
+            const coordinates = parseRangeCoordinateString(rangeText);
+
+            if (!mapId || !coordinates) {
+                return null;
+            }
+
+            return { mapId, coordinates };
+        }
+
+        function findClaimByCoordinates(ranges, coordinates) {
+            const target = `${coordinates.a}.${coordinates.b}.${coordinates.c}`;
+            for (const range of (ranges || [])) {
+                const existing = range?.coordinates || getRangeCoordinatesFromBounds(range?.bounds);
+                if (!existing) {
+                    continue;
+                }
+                const current = `${existing.a}.${existing.b}.${existing.c}`;
+                if (current === target) {
+                    return range;
+                }
+            }
+            return null;
+        }
+
+        function tryApplyInitialRangeDeepLink() {
+            const deepLink = getInitialRangeDeepLinkState();
+            if (!deepLink || !maps.length) {
+                return false;
+            }
+
+            const mapIndex = maps.findIndex((map) => String(map?.id || '') === deepLink.mapId);
+            if (mapIndex < 0) {
+                return false;
+            }
+
+            setActiveMap(mapIndex);
+            const activeMap = maps[activeMapIndex];
+            const targetClaim = findClaimByCoordinates(activeMap?.claimedRanges, deepLink.coordinates);
+            if (!targetClaim) {
+                return true;
+            }
+
+            selectedClaimedRangeId = targetClaim.id;
+            claimSelectionState.viewingClaimId = targetClaim.id;
+            claimSelectionState.modalPosition = null;
+            centerCameraForClaimModalRight(targetClaim.bounds, 0, {
+                zoom: 2.5,
+                modalWidthPx: 380,
+                modalSafeMarginPx: 12,
+                tileGapTiles: 1,
+            });
+            scheduleRender();
+            return true;
+        }
+
+        function setActiveMap(index) {
+            activeMapIndex = index;
+            cancelCameraAnimation();
+            camera = { ...maps[index].camera };
+            hydrateMapClaimedRanges(maps[index]);
+            setActiveClaimedRangesFromMap();
+            clearTileSelection();
+            renderActiveMapDetails();
+            renderMapMenu();
+            closeMapMenu();
+            scheduleRender();
+            recordMapVisit(maps[index].id);
+        }
+
+        async function loadMaps() {
+            try {
+                const region = window.__REGION__ || 'us';
+                const response = await fetch(`/api/maps?region=${encodeURIComponent(region)}`);
+                if (!response.ok) {
+                    throw new Error(`Failed to load maps: ${response.status}`);
+                }
+
+                const payload = await response.json();
+                maps = Array.isArray(payload) ? payload : (payload.maps || []);
+                maps.forEach(hydrateMapClaimedRanges);
+                mapRanking = Array.isArray(payload) ? mapRanking : (payload.ranking || mapRanking);
+
+                if (!maps.length) {
+                    activeMapLabel.textContent = 'No maps found';
+                    activeMapIntent.textContent = 'Create a map to get started';
+                    return;
+                }
+
+                renderMapMenu();
+                if (tryApplyInitialRangeDeepLink()) {
+                    return;
+                }
+                setActiveMap(0);
+            } catch (error) {
+                activeMapLabel.textContent = 'Unable to load maps';
+                activeMapIntent.textContent = 'Please try refreshing the page';
+                console.error(error);
+            }
+        }
+
+        function openMapMenu() {
+            closeSearchBar();
+            closeMapInfoPanel();
+            closeUserProfilePanel();
+            mapMenu.classList.remove('hidden');
+            activeMapSummaryButton.setAttribute('aria-expanded', 'true');
+        }
+
+        function closeMapMenu() {
+            mapMenu.classList.add('hidden');
+            activeMapSummaryButton.setAttribute('aria-expanded', 'false');
+        }
+
+        function toggleMapMenu() {
+            if (mapMenu.classList.contains('hidden')) {
+                openMapMenu();
+                return;
+            }
+
+            closeMapMenu();
+        }
+
+        function openMapInfoPanel() {
+            closeMapMenu();
+            closeSearchBar();
+            closeUserProfilePanel();
+            mapInfoPanel.classList.remove('hidden');
+            mapInfoButton.setAttribute('aria-expanded', 'true');
+            mapInfoButton.setAttribute('aria-label', 'Hide current map details');
+            mapInfoButtonIcon.innerHTML = `
+                <path d="M0 0h24v24H0z" fill="none" />
+                <path fill="currentColor" d="M6.707 5.293L12 10.585l5.293-5.292a1 1 0 0 1 1.414 1.414L13.415 12l5.292 5.293a1 1 0 0 1-1.414 1.414L12 13.415l-5.293 5.292a1 1 0 1 1-1.414-1.414L10.585 12L5.293 6.707a1 1 0 0 1 1.414-1.414" />
+            `;
+        }
+
+        function closeMapInfoPanel() {
+            mapInfoPanel.classList.add('hidden');
+            mapInfoButton.setAttribute('aria-expanded', 'false');
+            mapInfoButton.setAttribute('aria-label', 'Show current map details');
+            mapInfoButtonIcon.innerHTML = `
+                <path d="M0 0h24v24H0z" fill="none" />
+                <path fill="currentColor" d="M21 6a1 1 0 0 1-1 1H4a1 1 0 1 1 0-2h16a1 1 0 0 1 1 1m0 6a1 1 0 0 1-1 1H4a1 1 0 0 1 0-2h16a1 1 0 0 1 1 1m0 6a1 1 0 0 1-1 1H4a1 1 0 0 1 0-2h16a1 1 0 0 1 1 1" />
+            `;
+        }
+
+        function toggleMapInfoPanel() {
+            if (mapInfoPanel.classList.contains('hidden')) {
+                openMapInfoPanel();
+                return;
+            }
+
+            closeMapInfoPanel();
+        }
+
+        function openUserProfilePanel() {
+            closeMapMenu();
+            closeMapInfoPanel();
+            closeSearchBar();
+            closeClaimSelectionModal();
+            closeEvaluateSelectionModal();
+            scheduleRender();
+            renderUserProfilePanel();
+            userProfileModal.classList.remove('hidden');
+            userProfileModal.classList.add('flex');
+            userProfileModal.classList.remove('pointer-events-none');
+            userProfileButton.setAttribute('aria-expanded', 'true');
+        }
+
+        function closeUserProfilePanel() {
+            userProfileModal.classList.add('hidden');
+            userProfileModal.classList.remove('flex');
+            userProfileModal.classList.add('pointer-events-none');
+            userProfileButton.setAttribute('aria-expanded', 'false');
+            scheduleRender();
+        }
+
+        function toggleUserProfilePanel() {
+            if (userProfileModal.classList.contains('hidden')) {
+                openUserProfilePanel();
+                return;
+            }
+
+            closeUserProfilePanel();
+        }
+

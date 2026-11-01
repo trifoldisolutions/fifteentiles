@@ -1,0 +1,255 @@
+        const canvas = document.getElementById('mapCanvas');
+        const ctx = canvas.getContext('2d');
+        const wrapper = document.getElementById('canvasWrapper');
+        const claimSelectionButton = document.getElementById('claimSelectionButton');
+        const evaluateSelectionModal = document.getElementById('evaluateSelectionModal');
+        const evaluateSelectionModalDragHandle = document.getElementById('evaluateSelectionModalDragHandle');
+        const evaluateSelectionModalSummary = document.getElementById('evaluateSelectionModalSummary');
+        const evaluateSelectionRangeValue = document.getElementById('evaluateSelectionRangeValue');
+        const evaluateSelectionTileCountValue = document.getElementById('evaluateSelectionTileCountValue');
+        const evaluateSelectionValueValue = document.getElementById('evaluateSelectionValueValue');
+        const decreaseEvaluateZoningRingsButton = document.getElementById('decreaseEvaluateZoningRingsButton');
+        const increaseEvaluateZoningRingsButton = document.getElementById('increaseEvaluateZoningRingsButton');
+        const evaluateZoningRingsValue = document.getElementById('evaluateZoningRingsValue');
+        const evaluateZoningRingBreakdown = document.getElementById('evaluateZoningRingBreakdown');
+        const closeEvaluateSelectionModalButton = document.getElementById('closeEvaluateSelectionModalButton');
+        const cancelEvaluateSelectionButton = document.getElementById('cancelEvaluateSelectionButton');
+        const holdEvaluateSelectionButton = document.getElementById('holdEvaluateSelectionButton');
+        const confirmEvaluateSelectionButton = document.getElementById('confirmEvaluateSelectionButton');
+        const claimSelectionModal = document.getElementById('claimSelectionModal');
+        const claimSelectionModalDragHandle = document.getElementById('claimSelectionModalDragHandle');
+        const claimSelectionModalTitle = document.getElementById('claimSelectionModalTitle');
+        const claimSelectionModalSummary = document.getElementById('claimSelectionModalSummary');
+        const claimSelectionMetaLine = document.getElementById('claimSelectionMetaLine');
+        const claimSelectionPrimaryActions = document.getElementById('claimSelectionPrimaryActions');
+        const claimSelectionTerms = document.getElementById('claimSelectionTerms');
+        const claimSelectionImageSection = document.getElementById('claimSelectionImageSection');
+        const claimSelectionDescriptionSection = document.getElementById('claimSelectionDescriptionSection');
+        const claimSelectionRedirectSection = document.getElementById('claimSelectionRedirectSection');
+        const claimSelectionTagsSection = document.getElementById('claimSelectionTagsSection');
+        const claimSelectionFooterActions = document.getElementById('claimSelectionFooterActions');
+        const clearClaimTitleButton = document.getElementById('clearClaimTitleButton');
+        const editClaimTitleButton = document.getElementById('editClaimTitleButton');
+        const cancelClaimTitleEditButton = document.getElementById('cancelClaimTitleEditButton');
+        const closeClaimSelectionModalButton = document.getElementById('closeClaimSelectionModalButton');
+        const dropClaimSelectionButton = document.getElementById('dropClaimSelectionButton');
+        const sellClaimSelectionButton = document.getElementById('sellClaimSelectionButton');
+        const claimSelectionDescriptionInput = document.getElementById('claimSelectionDescriptionInput');
+        const claimSelectionRedirectInput = document.getElementById('claimSelectionRedirectInput');
+        const claimSelectionShareButton = document.getElementById('claimSelectionShareButton');
+        const claimSelectionPreviewButton = document.getElementById('claimSelectionPreviewButton');
+        const claimSelectionTagInput = document.getElementById('claimSelectionTagInput');
+        const claimSelectionTagList = document.getElementById('claimSelectionTagList');
+        const claimSelectionCancelButton = document.getElementById('claimSelectionCancelButton');
+        const claimSelectionUpdateButton = document.getElementById('claimSelectionUpdateButton');
+        const claimSelectionImageContainer = document.getElementById('claimSelectionImageContainer');
+        const claimSelectionImageInput = document.getElementById('claimSelectionImageInput');
+        const claimSelectionImageViewport = document.getElementById('claimSelectionImageViewport');
+        const claimSelectionImagePreview = document.getElementById('claimSelectionImagePreview');
+        const claimSelectionCropBox = document.getElementById('claimSelectionCropBox');
+        const claimSelectionCropResizeHandle = document.getElementById('claimSelectionCropResizeHandle');
+        const claimSelectionImageCropModeButton = document.getElementById('claimSelectionImageCropModeButton');
+        const claimSelectionImageCropModeIconFocus = document.getElementById('claimSelectionImageCropModeIconFocus');
+        const claimSelectionImageCropModeIconCheck = document.getElementById('claimSelectionImageCropModeIconCheck');
+        const claimSelectionImagePlaceholder = document.getElementById('claimSelectionImagePlaceholder');
+        const claimSelectionImageDeleteButton = document.getElementById('claimSelectionImageDeleteButton');
+        const claimSelectionAspectRatioBadge = document.getElementById('claimSelectionAspectRatioBadge');
+        const topBarDefault = document.getElementById('topBarDefault');
+        const topBarSearch = document.getElementById('topBarSearch');
+        const mapInfoButton = document.getElementById('mapInfoButton');
+        const searchButton = document.getElementById('searchButton');
+        const backSearchButton = document.getElementById('backSearchButton');
+        const goToSearchButton = document.getElementById('goToSearchButton');
+        const topBarSearchInput = document.getElementById('topBarSearchInput');
+        const userProfileButton = document.getElementById('userProfileButton');
+        const mapMenu = document.getElementById('mapMenu');
+        const searchResultsPanel = document.getElementById('searchResultsPanel');
+        const mapInfoPanel = document.getElementById('mapInfoPanel');
+        const userProfileModal = document.getElementById('userProfileModal');
+        const userProfileModalCard = document.getElementById('userProfileModalCard');
+        const mapInfoButtonIcon = document.getElementById('mapInfoButtonIcon');
+        const activeMapLabel = document.getElementById('activeMapLabel');
+        const activeMapIntent = document.getElementById('activeMapIntent');
+        const activeMapSummaryButton = document.getElementById('activeMapSummaryButton');
+        const statusPanel = document.getElementById('statusPanel');
+        const statusPanelLabel = document.getElementById('statusPanelLabel');
+        const jumpToSelectionButton = document.getElementById('jumpToSelectionButton');
+        const statusPanelPrimary = document.getElementById('statusPanelPrimary');
+        const statusPanelSecondary = document.getElementById('statusPanelSecondary');
+        const selectionModeControl = document.getElementById('selectionModeControl');
+        const selectionModeAreaButton = document.getElementById('selectionModeAreaButton');
+        const selectionModePathButton = document.getElementById('selectionModePathButton');
+        const selectionModeTitle = document.getElementById('selectionModeTitle');
+        const selectionModeDescription = document.getElementById('selectionModeDescription');
+        const originButton = document.getElementById('originButton');
+        const zoomInButton = document.getElementById('zoomInButton');
+        const zoomOutButton = document.getElementById('zoomOutButton');
+        const appToast = document.getElementById('appToast');
+        const appToastCard = document.getElementById('appToastCard');
+        const appToastIcon = document.getElementById('appToastIcon');
+        const appToastLabel = document.getElementById('appToastLabel');
+        const appToastMessage = document.getElementById('appToastMessage');
+        const appToastCloseButton = document.getElementById('appToastCloseButton');
+        const userState = {
+            isLoggedIn: false,
+            name: 'Anonymous user',
+            email: '',
+            authMode: 'login',
+            activeTab: 'profile',
+            isSubmitting: false,
+            isStartingTopUp: false,
+            error: '',
+            billingNotice: '',
+            passwordRulesAttempted: false,
+            tilesOwned: 0,
+            visitors: 0,
+            netWorth: 0,
+            walletBalanceTtk: 0,
+            showInverseTileRate: false,
+            showInverseTtkRate: false,
+            topUpInputCurrency: 'ttk',
+            topUpTtkAmount: '',
+            authForm: {
+                displayName: '',
+                email: '',
+                password: '',
+                region: (window.__REGION__ || 'us'),
+            },
+        };
+        const userTabs = [
+            { id: 'profile', label: 'Profile' },
+            { id: 'finances', label: 'Finances' },
+            { id: 'settings', label: 'Settings' },
+            { id: 'danger-zone', label: 'Danger Zone' },
+            { id: 'help', label: 'Help' },
+        ];
+
+        const config = {
+            cellSize: 30,
+            gridColor: '#e6e6e6',
+            backgroundColor: '#fafafa',
+            selectionFillColor: 'rgba(211, 96, 96, 0.28)',
+            selectionStrokeColor: '#d36060',
+            selectionOutlineColor: 'rgba(190, 68, 68, 0.9)',
+            defaultTileUsdValue: 0.25,
+            ttkUsdRate: 2.25,
+            minTopUpUsd: 8,
+            maxTopUpUsd: 500,
+            maxSelectionCols: 10,
+            maxSelectionRows: 10,
+            minZoom: 0.5,
+            maxZoom: 5,
+            attachPopupsToRange: true,
+        };
+
+        config.minTopUpTtk = Number((config.minTopUpUsd / config.ttkUsdRate).toFixed(2));
+        config.maxTopUpTtk = Number((config.maxTopUpUsd / config.ttkUsdRate).toFixed(2));
+
+        let maps = [];
+        let activeMapIndex = 0;
+        let renderFrame = null;
+        let cameraAnimationFrame = null;
+        let mapRanking = {
+            strategy: 'alphabetical',
+            lastMapId: null,
+        };
+        let isSearchOpen = false;
+        let searchResults = [];
+        let recentSearches = [];
+
+        let camera = {
+            x: 0,
+            y: 0,
+            zoom: 1,
+        };
+
+        let mouse = {
+            isDown: false,
+            mode: null,
+            startX: 0,
+            startY: 0,
+            lastX: 0,
+            lastY: 0,
+            claimedRangeId: null,
+            moved: false,
+        };
+        let suppressNextDocumentClick = false;
+        let selectionState = {
+            mode: 'area',
+            committedBounds: null,
+            committedKeys: new Set(),
+            draft: null,
+            lastLimitReason: '',
+        };
+        let claimedRanges = [];
+        let claimedRangeCoverImageCache = new Map();
+        let selectedClaimedRangeId = null;
+        let hoveredClaimedRangeBadgeId = null;
+        let pinnedClaimedRangeBadgeId = null;
+        let claimedRangeSequence = 1;
+        let evaluateSelectionState = {
+            isOpen: false,
+            zoningRings: 0,
+            isClaiming: false,
+            modalPosition: null,
+        };
+        let claimSelectionState = {
+            isOpen: false,
+            viewingClaimId: null,
+            modalPosition: null,
+            title: 'Claimed Range Name',
+            isEditingTitle: false,
+            titleBeforeEdit: 'Claimed Range Name',
+            imageSourceDataUrl: '',
+            imageDataUrl: '',
+            tags: [],
+        };
+        let claimSelectionModalDragState = {
+            pointerId: null,
+            offsetX: 0,
+            offsetY: 0,
+        };
+        let evaluateSelectionModalDragState = {
+            pointerId: null,
+            offsetX: 0,
+            offsetY: 0,
+        };
+        let claimSelectionCropState = {
+            rawImageDataUrl: '',
+            sourceWidth: 0,
+            sourceHeight: 0,
+            renderedWidth: 0,
+            renderedHeight: 0,
+            renderedLeft: 0,
+            renderedTop: 0,
+            cropWidth: 0,
+            cropHeight: 0,
+            maxCropWidth: 0,
+            maxCropHeight: 0,
+            cropScale: 1,
+            confirmedPanX: 0.5,
+            confirmedPanY: 0.5,
+            confirmedCropScale: 1,
+            isCropMode: false,
+            cropLeft: 0,
+            cropTop: 0,
+            panX: 0.5,
+            panY: 0.5,
+            isDragging: false,
+            isResizing: false,
+            pointerId: null,
+            dragOffsetX: 0,
+            dragOffsetY: 0,
+            mouseDragActive: false,
+            mouseResizeActive: false,
+        };
+        let userProfilePointerDownInside = false;
+        let toastState = {
+            hideTimer: null,
+            remainingMs: 0,
+            startedAt: 0,
+            isHovered: false,
+            isVisible: false,
+            durationMs: 9000,
+        };
+

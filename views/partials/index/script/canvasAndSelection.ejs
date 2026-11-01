@@ -1,0 +1,2364 @@
+        function scheduleRender() {
+            if (renderFrame !== null) {
+                return;
+            }
+
+            renderFrame = window.requestAnimationFrame(() => {
+                renderFrame = null;
+                render();
+            });
+        }
+
+        function cancelCameraAnimation() {
+            if (cameraAnimationFrame !== null) {
+                window.cancelAnimationFrame(cameraAnimationFrame);
+                cameraAnimationFrame = null;
+            }
+        }
+
+        function easeOutCubic(t) {
+            return 1 - Math.pow(1 - t, 3);
+        }
+
+        function animateCameraTo(targetCamera, duration = 320) {
+            cancelCameraAnimation();
+
+            if (!Number.isFinite(duration) || duration <= 0) {
+                camera = { ...targetCamera };
+                scheduleRender();
+                return;
+            }
+
+            const startCamera = { ...camera };
+            const startTime = performance.now();
+
+            function step(now) {
+                const elapsed = now - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const eased = easeOutCubic(progress);
+
+                camera = {
+                    x: startCamera.x + (targetCamera.x - startCamera.x) * eased,
+                    y: startCamera.y + (targetCamera.y - startCamera.y) * eased,
+                    zoom: startCamera.zoom + (targetCamera.zoom - startCamera.zoom) * eased,
+                };
+
+                scheduleRender();
+
+                if (progress < 1) {
+                    cameraAnimationFrame = window.requestAnimationFrame(step);
+                    return;
+                }
+
+                camera = { ...targetCamera };
+                cameraAnimationFrame = null;
+                scheduleRender();
+            }
+
+            cameraAnimationFrame = window.requestAnimationFrame(step);
+        }
+
+        function resizeCanvas() {
+            canvas.width = wrapper.clientWidth;
+            canvas.height = wrapper.clientHeight;
+            if (claimSelectionCropState.rawImageDataUrl) {
+                updateClaimSelectionCropLayout();
+                exportClaimSelectionCroppedImage();
+            }
+            scheduleRender();
+        }
+
+        function zoomCamera(zoomFactor) {
+            const targetZoom = Math.max(config.minZoom, Math.min(config.maxZoom, camera.zoom * zoomFactor));
+            animateCameraTo({
+                x: camera.x,
+                y: camera.y,
+                zoom: targetZoom,
+            }, 180);
+        }
+
+        function render() {
+            if (!maps.length) {
+                ctx.fillStyle = config.backgroundColor;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                renderClaimSelectionOverlay();
+                renderStatusPanel();
+                return;
+            }
+
+            const activeMap = maps[activeMapIndex];
+
+            ctx.fillStyle = config.backgroundColor;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.scale(camera.zoom, camera.zoom);
+            ctx.translate(camera.x, camera.y);
+
+            drawGrid();
+            drawClaimedRanges();
+            drawMapTiles(activeMap);
+            drawTileSelection();
+            drawClaimSelectionEnhancements();
+
+            ctx.restore();
+            renderClaimSelectionOverlay();
+            renderStatusPanel();
+        }
+
+        function drawGrid() {
+            const cellSize = config.cellSize;
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const startCol = Math.floor(-centerX / camera.zoom / cellSize - camera.x / cellSize) - 1;
+            const startRow = Math.floor(-centerY / camera.zoom / cellSize - camera.y / cellSize) - 1;
+            const endCol = Math.ceil(centerX / camera.zoom / cellSize - camera.x / cellSize) + 1;
+            const endRow = Math.ceil(centerY / camera.zoom / cellSize - camera.y / cellSize) + 1;
+            const left = startCol * cellSize;
+            const right = (endCol + 1) * cellSize;
+            const top = startRow * cellSize;
+            const bottom = (endRow + 1) * cellSize;
+
+            if (camera.zoom >= 0.75) {
+                ctx.fillStyle = 'rgba(200, 220, 240, 0.02)';
+                for (let row = startRow; row <= endRow; row++) {
+                    const colOffset = Math.abs(row % 2);
+                    for (let col = startCol + colOffset; col <= endCol; col += 2) {
+                        ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+                    }
+                }
+            }
+
+            ctx.beginPath();
+            for (let col = startCol; col <= endCol + 1; col++) {
+                const x = col * cellSize;
+                ctx.moveTo(x, top);
+                ctx.lineTo(x, bottom);
+            }
+            for (let row = startRow; row <= endRow + 1; row++) {
+                const y = row * cellSize;
+                ctx.moveTo(left, y);
+                ctx.lineTo(right, y);
+            }
+            ctx.strokeStyle = config.gridColor;
+            ctx.lineWidth = 1 / camera.zoom;
+            ctx.stroke();
+
+        }
+
+        function drawMapTiles(activeMap) {
+            const cellSize = config.cellSize;
+            const accent = activeMap.accent;
+
+            for (const tile of activeMap.tiles) {
+                const x = tile.col * cellSize;
+                const y = tile.row * cellSize;
+
+                ctx.fillStyle = `${accent}22`;
+                ctx.fillRect(x, y, cellSize, cellSize);
+
+                ctx.strokeStyle = accent;
+                ctx.lineWidth = Math.max(1.5 / camera.zoom, 1);
+                ctx.strokeRect(
+                    x + 1 / camera.zoom,
+                    y + 1 / camera.zoom,
+                    cellSize - 2 / camera.zoom,
+                    cellSize - 2 / camera.zoom
+                );
+
+                if (camera.zoom > 1.1) {
+                    ctx.fillStyle = accent;
+                    ctx.beginPath();
+                    ctx.arc(x + cellSize / 2, y + cellSize / 2, Math.max(3 / camera.zoom, 2), 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                if (camera.zoom > 1.8) {
+                    ctx.fillStyle = accent;
+                    ctx.font = `${10 / camera.zoom}px "Noto Sans", sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(tile.type, x + cellSize / 2, y + cellSize / 2 + 10 / camera.zoom);
+                }
+            }
+        }
+
+        function screenPointToWorld(clientX, clientY) {
+            const rect = canvas.getBoundingClientRect();
+
+            return {
+                x: (clientX - rect.left - canvas.width / 2) / camera.zoom - camera.x,
+                y: (clientY - rect.top - canvas.height / 2) / camera.zoom - camera.y,
+            };
+        }
+
+        function screenPointToTile(clientX, clientY) {
+            const worldPoint = screenPointToWorld(clientX, clientY);
+
+            return {
+                col: Math.floor(worldPoint.x / config.cellSize),
+                row: Math.floor(worldPoint.y / config.cellSize),
+            };
+        }
+
+        function tileKey(col, row) {
+            return `${col},${row}`;
+        }
+
+        function parseTileKey(key) {
+            const [col, row] = String(key).split(',').map(Number);
+            return { col, row };
+        }
+
+        function encodeSignedInteger(value) {
+            const intValue = Number.isFinite(Number(value)) ? Math.trunc(Number(value)) : 0;
+            return intValue >= 0 ? (intValue * 2) : ((-intValue * 2) - 1);
+        }
+
+        function decodeSignedInteger(value) {
+            const intValue = Number.isFinite(Number(value)) ? Math.trunc(Number(value)) : 0;
+            return intValue % 2 === 0 ? (intValue / 2) : -((intValue + 1) / 2);
+        }
+
+        function getVertexNumber(vertexCol, vertexRow) {
+            const colValue = encodeSignedInteger(vertexCol);
+            const rowValue = encodeSignedInteger(vertexRow);
+            const diagonal = colValue + rowValue;
+            return ((diagonal * (diagonal + 1)) / 2) + rowValue;
+        }
+
+        function getVertexPointFromNumber(vertexNumber) {
+            const value = Number(vertexNumber);
+            if (!Number.isFinite(value) || value < 0) {
+                return null;
+            }
+
+            const floored = Math.floor(value);
+            const diagonal = Math.floor((Math.sqrt((8 * floored) + 1) - 1) / 2);
+            const diagonalStart = (diagonal * (diagonal + 1)) / 2;
+            const rowValue = floored - diagonalStart;
+            const colValue = diagonal - rowValue;
+            return {
+                col: decodeSignedInteger(colValue),
+                row: decodeSignedInteger(rowValue),
+            };
+        }
+
+        function getRangeCoordinatesFromBounds(bounds) {
+            if (!bounds) {
+                return null;
+            }
+
+            // A: top-left vertex, B: bottom-left vertex, C: bottom-right vertex
+            const a = getVertexNumber(bounds.minCol, bounds.minRow);
+            const b = getVertexNumber(bounds.minCol, bounds.maxRow + 1);
+            const c = getVertexNumber(bounds.maxCol + 1, bounds.maxRow + 1);
+            return { a, b, c };
+        }
+
+        function buildClaimShareUrl(range) {
+            const activeMap = maps[activeMapIndex];
+            if (!activeMap?.id || !range?.bounds) {
+                return '';
+            }
+
+            const coordinates = getRangeCoordinatesFromBounds(range.bounds);
+            if (!coordinates) {
+                return '';
+            }
+
+            const url = new URL(window.location.href);
+            url.searchParams.set('map', String(activeMap.id));
+            url.searchParams.set('range', `${coordinates.a}.${coordinates.b}.${coordinates.c}`);
+            url.searchParams.set('v', '1');
+            return url.toString();
+        }
+
+        function parseRangeCoordinateString(rawRangeValue) {
+            const value = String(rawRangeValue || '').trim();
+            const segments = value.split('.');
+            if (segments.length !== 3) {
+                return null;
+            }
+
+            const [aRaw, bRaw, cRaw] = segments;
+            const a = Number(aRaw);
+            const b = Number(bRaw);
+            const c = Number(cRaw);
+            if (!Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(c)) {
+                return null;
+            }
+
+            return { a, b, c };
+        }
+
+        function getBoundsFromRangeCoordinates(coordinates) {
+            const aPoint = getVertexPointFromNumber(coordinates?.a);
+            const bPoint = getVertexPointFromNumber(coordinates?.b);
+            const cPoint = getVertexPointFromNumber(coordinates?.c);
+            if (!aPoint || !bPoint || !cPoint) {
+                return null;
+            }
+
+            return {
+                minCol: aPoint.col,
+                minRow: aPoint.row,
+                maxCol: cPoint.col - 1,
+                maxRow: bPoint.row - 1,
+            };
+        }
+
+        function centerCameraOnBounds(bounds, duration = 260, options = {}) {
+            if (!bounds) {
+                return;
+            }
+
+            const centerX = (bounds.minCol + bounds.maxCol + 1) * config.cellSize / 2;
+            const centerY = (bounds.minRow + bounds.maxRow + 1) * config.cellSize / 2;
+            const targetZoom = Number.isFinite(Number(options.zoom)) ? Number(options.zoom) : camera.zoom;
+            const screenOffsetXPx = Number.isFinite(Number(options.screenOffsetXPx)) ? Number(options.screenOffsetXPx) : 0;
+            animateCameraTo({
+                x: -centerX + (screenOffsetXPx / targetZoom),
+                y: -centerY,
+                zoom: targetZoom,
+            }, duration);
+        }
+
+        function centerCameraForClaimModalRight(bounds, duration = 260, options = {}) {
+            if (!bounds) {
+                return;
+            }
+
+            const targetZoom = Number.isFinite(Number(options.zoom)) ? Number(options.zoom) : camera.zoom;
+            const modalWidth = Number.isFinite(Number(options.modalWidthPx)) ? Number(options.modalWidthPx) : 380;
+            const modalSafeMargin = Number.isFinite(Number(options.modalSafeMarginPx)) ? Number(options.modalSafeMarginPx) : 12;
+            const tileGap = Number.isFinite(Number(options.tileGapTiles)) ? Number(options.tileGapTiles) : 1;
+            const wrapperWidth = wrapper.clientWidth || canvas.width || 0;
+
+            const popupLeftX = Math.max(modalSafeMargin, wrapperWidth - modalWidth - modalSafeMargin);
+            const anchorWorldX = (bounds.maxCol + 1 + tileGap) * config.cellSize;
+            const centerWorldY = ((bounds.minRow + bounds.maxRow + 1) * config.cellSize) / 2;
+            const targetCameraX = ((popupLeftX - (wrapperWidth / 2)) / targetZoom) - anchorWorldX;
+            const targetCameraY = -centerWorldY;
+
+            animateCameraTo({
+                x: targetCameraX,
+                y: targetCameraY,
+                zoom: targetZoom,
+            }, duration);
+        }
+
+        function getSelectionBounds(selectionDraft) {
+            if (!selectionDraft?.startTile || !selectionDraft?.endTile) {
+                return null;
+            }
+
+            return {
+                minCol: Math.min(selectionDraft.startTile.col, selectionDraft.endTile.col),
+                maxCol: Math.max(selectionDraft.startTile.col, selectionDraft.endTile.col),
+                minRow: Math.min(selectionDraft.startTile.row, selectionDraft.endTile.row),
+                maxRow: Math.max(selectionDraft.startTile.row, selectionDraft.endTile.row),
+            };
+        }
+
+        function clampAreaSelectionEnd(startTile, endTile) {
+            const maxColOffset = config.maxSelectionCols - 1;
+            const maxRowOffset = config.maxSelectionRows - 1;
+            const deltaCol = endTile.col - startTile.col;
+            const deltaRow = endTile.row - startTile.row;
+
+            return {
+                col: startTile.col + Math.max(-maxColOffset, Math.min(maxColOffset, deltaCol)),
+                row: startTile.row + Math.max(-maxRowOffset, Math.min(maxRowOffset, deltaRow)),
+            };
+        }
+
+        function getCurrentSelectionBounds() {
+            if (selectionState.mode === 'area') {
+                return getSelectionBounds(selectionState.draft)
+                    || selectionState.committedBounds
+                    || getSelectionBoundsFromKeys(selectionState.committedKeys);
+            }
+
+            const activeKeys = selectionState.draft?.visitedKeys || selectionState.committedKeys;
+            return getSelectionBoundsFromKeys(activeKeys);
+        }
+
+        function createTileKeySetFromBounds(bounds) {
+            const keys = new Set();
+            if (!bounds) {
+                return keys;
+            }
+
+            for (let row = bounds.minRow; row <= bounds.maxRow; row += 1) {
+                for (let col = bounds.minCol; col <= bounds.maxCol; col += 1) {
+                    keys.add(tileKey(col, row));
+                }
+            }
+
+            return keys;
+        }
+
+        function getSelectionBoundsFromKeys(keys) {
+            if (!keys?.size) {
+                return null;
+            }
+
+            let minCol = Infinity;
+            let maxCol = -Infinity;
+            let minRow = Infinity;
+            let maxRow = -Infinity;
+
+            for (const key of keys) {
+                const { col, row } = parseTileKey(key);
+                minCol = Math.min(minCol, col);
+                maxCol = Math.max(maxCol, col);
+                minRow = Math.min(minRow, row);
+                maxRow = Math.max(maxRow, row);
+            }
+
+            return { minCol, maxCol, minRow, maxRow };
+        }
+
+        function getCommittedSelectionKeys() {
+            if (selectionState.committedKeys.size) {
+                return selectionState.committedKeys;
+            }
+
+            return createTileKeySetFromBounds(selectionState.committedBounds);
+        }
+
+        function getCommittedSelectionBounds() {
+            return selectionState.committedBounds || getSelectionBoundsFromKeys(selectionState.committedKeys);
+        }
+
+        function getClosestPopularAspectRatioLabel(widthTiles, heightTiles) {
+            const width = Math.max(1, Number(widthTiles) || 1);
+            const height = Math.max(1, Number(heightTiles) || 1);
+            const target = width / height;
+            const candidates = [
+                { label: '1:1', ratio: 1 / 1 },
+                { label: '4:3', ratio: 4 / 3 },
+                { label: '3:2', ratio: 3 / 2 },
+                { label: '16:10', ratio: 16 / 10 },
+                { label: '16:9', ratio: 16 / 9 },
+                { label: '21:9', ratio: 21 / 9 },
+                { label: '9:16', ratio: 9 / 16 },
+                { label: '2:3', ratio: 2 / 3 },
+                { label: '3:4', ratio: 3 / 4 },
+            ];
+
+            let best = candidates[0];
+            let smallestDelta = Math.abs(target - best.ratio);
+            for (let index = 1; index < candidates.length; index += 1) {
+                const next = candidates[index];
+                const delta = Math.abs(target - next.ratio);
+                if (delta < smallestDelta) {
+                    best = next;
+                    smallestDelta = delta;
+                }
+            }
+
+            return best.label;
+        }
+
+        function updateClaimAspectRatioBadge(bounds) {
+            if (!claimSelectionAspectRatioBadge) {
+                return;
+            }
+            if (!bounds) {
+                claimSelectionAspectRatioBadge.textContent = 'Ratio: -';
+                return;
+            }
+
+            const widthTiles = (bounds.maxCol - bounds.minCol) + 1;
+            const heightTiles = (bounds.maxRow - bounds.minRow) + 1;
+            const closestPopularRatio = getClosestPopularAspectRatioLabel(widthTiles, heightTiles);
+            claimSelectionAspectRatioBadge.textContent = `Ratio: ${closestPopularRatio}`;
+            if (claimSelectionCropState.rawImageDataUrl) {
+                updateClaimSelectionCropLayout();
+                exportClaimSelectionCroppedImage();
+            }
+        }
+
+        function getClaimSelectionAspectRatio(bounds) {
+            if (!bounds) {
+                return 1;
+            }
+            const widthTiles = Math.max(1, (bounds.maxCol - bounds.minCol) + 1);
+            const heightTiles = Math.max(1, (bounds.maxRow - bounds.minRow) + 1);
+            return widthTiles / heightTiles;
+        }
+
+        function getClaimedRangeById(rangeId) {
+            return claimedRanges.find((range) => range.id === rangeId) || null;
+        }
+
+        function isAuctionRange(range) {
+            return range?.status === 'auction';
+        }
+
+        function setClaimSelectionModalDroppedMode(isDropped, viewedClaim = null) {
+            const hideClass = 'hidden';
+            const showClass = 'flex';
+            const inlineShowClass = 'inline-flex';
+
+            const advancedSections = [
+                claimSelectionImageSection,
+                claimSelectionDescriptionSection,
+                claimSelectionRedirectSection,
+                claimSelectionTagsSection,
+                claimSelectionFooterActions,
+            ];
+
+            if (isDropped) {
+                for (const section of advancedSections) {
+                    section?.classList.add(hideClass);
+                }
+
+                const totalTiles = Number.isFinite(Number(viewedClaim?.metrics?.total)) ? Number(viewedClaim.metrics.total) : 0;
+                const visits = Number.isFinite(Number(viewedClaim?.visits)) ? Number(viewedClaim.visits) : 0;
+                const holdersCount = Number.isFinite(Number(viewedClaim?.holdersCount))
+                    ? Math.max(0, Math.floor(Number(viewedClaim.holdersCount)))
+                    : 0;
+                const ttkText = formatTtkValue(viewedClaim?.ttkValue || 0);
+                claimSelectionModalSummary.classList.remove(hideClass);
+                claimSelectionModalSummary.textContent = '';
+                claimSelectionMetaLine.textContent = `${totalTiles} tiles | ${visits} visits | ${ttkText}.`;
+
+                editClaimTitleButton.classList.add(hideClass);
+                editClaimTitleButton.classList.remove(inlineShowClass);
+                clearClaimTitleButton.classList.add(hideClass);
+                clearClaimTitleButton.classList.remove(inlineShowClass);
+                cancelClaimTitleEditButton.classList.add(hideClass);
+                cancelClaimTitleEditButton.classList.remove(inlineShowClass);
+                claimSelectionModalTitle.setAttribute('readonly', 'readonly');
+
+                dropClaimSelectionButton.textContent = `Hold (${holdersCount} holders)`;
+                dropClaimSelectionButton.className = 'h-10 flex-1 rounded-md border border-iron-300 bg-iron-100 px-4 text-step--1 font-medium text-iron-700 transition hover:bg-iron-200';
+                sellClaimSelectionButton.textContent = 'Buy';
+                sellClaimSelectionButton.className = 'h-10 flex-1 rounded-md border border-sunglo-700 bg-sunglo-100 px-4 text-step--1 font-medium text-sunglo-700 transition hover:bg-sunglo-200';
+                claimSelectionPrimaryActions.classList.remove(hideClass);
+                claimSelectionPrimaryActions.classList.add(showClass);
+                claimSelectionTerms?.classList.remove(hideClass);
+                return;
+            }
+
+            for (const section of advancedSections) {
+                section?.classList.remove(hideClass);
+            }
+            claimSelectionPrimaryActions.classList.remove(hideClass);
+            claimSelectionPrimaryActions.classList.add(showClass);
+            claimSelectionTerms?.classList.remove(hideClass);
+            claimSelectionModalSummary.classList.add(hideClass);
+            claimSelectionModalSummary.textContent = '';
+            claimSelectionMetaLine.textContent = `${viewedClaim?.metrics?.total || 0} tile${viewedClaim?.metrics?.total === 1 ? '' : 's'} - ${formatTtkValue(viewedClaim?.ttkValue || 0)}`;
+
+            editClaimTitleButton.classList.remove(hideClass);
+            editClaimTitleButton.classList.add(inlineShowClass);
+
+            dropClaimSelectionButton.textContent = 'Drop';
+            dropClaimSelectionButton.className = 'h-10 flex-1 rounded-md border border-sunglo-700 bg-sunglo-100 px-4 text-step--1 font-medium text-sunglo-700 transition hover:border-sunglo-200';
+            sellClaimSelectionButton.textContent = 'Sell';
+            sellClaimSelectionButton.className = 'h-10 flex-1 rounded-md border border-breaker-bay-700 bg-breaker-bay-100 px-4 text-step--1 font-medium text-breaker-bay-700 transition hover:bg-breaker-bay-200';
+
+            renderClaimTitleEditState();
+        }
+
+        function getClaimOwnedTileKeySet(range) {
+            const ownedKeys = new Set(Array.isArray(range?.keys) ? range.keys : []);
+            const zoningRingKeys = Array.isArray(range?.zoningRingKeys) ? range.zoningRingKeys : [];
+            if (zoningRingKeys.length) {
+                for (const key of zoningRingKeys) {
+                    ownedKeys.add(key);
+                }
+                return ownedKeys;
+            }
+
+            const ringCount = Math.max(0, Math.min(3, Number(range?.zoningRings) || 0));
+            for (let ringIndex = 1; ringIndex <= ringCount; ringIndex += 1) {
+                const ringKeys = getRingKeysForBounds(range.bounds, ringIndex);
+                for (const key of ringKeys) {
+                    ownedKeys.add(key);
+                }
+            }
+
+            return ownedKeys;
+        }
+
+        function getOccupiedTileKeys(excludedRangeId = null) {
+            const occupiedKeys = new Set();
+            for (const range of claimedRanges) {
+                if (excludedRangeId && range.id === excludedRangeId) {
+                    continue;
+                }
+                const ownedKeys = getClaimOwnedTileKeySet(range);
+                for (const key of ownedKeys) {
+                    occupiedKeys.add(key);
+                }
+            }
+            return occupiedKeys;
+        }
+
+        function getClaimedRangeAtTile(tile) {
+            if (!tile) {
+                return null;
+            }
+
+            const key = tileKey(tile.col, tile.row);
+            for (const range of claimedRanges) {
+                const ownedKeys = getClaimOwnedTileKeySet(range);
+                if (ownedKeys.has(key)) {
+                    return range;
+                }
+            }
+
+            return null;
+        }
+
+        function getClaimedRangeBadgeTile(range) {
+            return {
+                col: range.bounds.maxCol,
+                row: range.bounds.maxRow,
+            };
+        }
+
+        function getClaimStorageKey(mapId) {
+            return `fifteenTiles.claimedRanges.${mapId}`;
+        }
+
+        function readStoredClaimedRanges(mapId) {
+            try {
+                const storedClaims = window.localStorage.getItem(getClaimStorageKey(mapId));
+                const parsedClaims = storedClaims ? JSON.parse(storedClaims) : [];
+                return Array.isArray(parsedClaims) ? parsedClaims : [];
+            } catch (error) {
+                return [];
+            }
+        }
+
+        function writeStoredClaimedRanges(mapId, ranges) {
+            try {
+                window.localStorage.setItem(getClaimStorageKey(mapId), JSON.stringify(ranges || []));
+            } catch (error) {
+                console.error('Unable to persist claimed ranges locally', error);
+            }
+        }
+
+        function mergeClaimedRanges(serverRanges, localRanges) {
+            const mergedRanges = [];
+            const seenRangeIds = new Set();
+
+            for (const range of [...(serverRanges || []), ...(localRanges || [])]) {
+                if (!range?.id || seenRangeIds.has(range.id)) {
+                    continue;
+                }
+
+                seenRangeIds.add(range.id);
+                mergedRanges.push(range);
+            }
+
+            return mergedRanges;
+        }
+
+        function hydrateMapClaimedRanges(map) {
+            const storedClaims = readStoredClaimedRanges(map.id);
+            map.claimedRanges = mergeClaimedRanges(map.claimedRanges || [], storedClaims);
+            writeStoredClaimedRanges(map.id, map.claimedRanges);
+        }
+
+        function setActiveClaimedRangesFromMap() {
+            const activeMap = maps[activeMapIndex];
+            claimedRanges = activeMap?.claimedRanges || [];
+            selectedClaimedRangeId = null;
+            renderActiveMapDetails();
+        }
+
+        function replaceClaimedRange(rangeId, nextRange) {
+            const activeMap = maps[activeMapIndex];
+            if (!activeMap) {
+                return;
+            }
+
+            activeMap.claimedRanges = (activeMap.claimedRanges || []).map((range) => (
+                range.id === rangeId ? nextRange : range
+            ));
+            claimedRanges = activeMap.claimedRanges;
+            selectedClaimedRangeId = nextRange.id;
+            writeStoredClaimedRanges(activeMap.id, activeMap.claimedRanges);
+            renderActiveMapDetails();
+        }
+
+        async function persistClaimedRange(range) {
+            const activeMap = maps[activeMapIndex];
+            if (!activeMap) {
+                return;
+            }
+
+            writeStoredClaimedRanges(activeMap.id, activeMap.claimedRanges || []);
+
+            try {
+                const response = await fetch(`/api/maps/${encodeURIComponent(activeMap.id)}/claims`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        bounds: range.bounds,
+                        zoningRings: range.zoningRings,
+                        ttkValue: range.ttkValue,
+                        imageDataUrl: range.imageDataUrl || '',
+                        title: range.title || '',
+                        description: range.description || '',
+                        redirectUrl: range.redirectUrl || '',
+                        tags: Array.isArray(range.tags) ? range.tags : [],
+                    }),
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(result.error || 'Unable to persist claimed range.');
+                }
+
+                if (result.claim) {
+                    replaceClaimedRange(range.id, result.claim);
+                }
+                if (result.user) {
+                    setAuthenticatedUser(result.user);
+                }
+                scheduleRender();
+            } catch (error) {
+                throw error;
+            }
+        }
+
+        async function claimCurrentSelection() {
+            const keys = getCommittedSelectionKeys();
+            const bounds = getCommittedSelectionBounds();
+            if (!keys.size || !bounds) {
+                return null;
+            }
+
+            const occupiedKeys = getOccupiedTileKeys();
+            for (const key of keys) {
+                if (occupiedKeys.has(key)) {
+                    showToast('Selected range overlaps tiles already claimed by an earlier range.', {
+                        tone: 'error',
+                        durationMs: 7000,
+                    });
+                    return null;
+                }
+            }
+
+            const metrics = getSelectionMetricsFromKeys(keys);
+            const valuation = getSelectionClaimValuation(keys, bounds, evaluateSelectionState.zoningRings, occupiedKeys);
+            const coordinates = getRangeCoordinatesFromBounds(bounds);
+            const zoningRingKeys = valuation.ringBreakdown.flatMap((ring) => Array.from(ring.keys));
+            if (evaluateSelectionState.zoningRings > 0 && zoningRingKeys.length === 0) {
+                showToast('All zoning ring tiles are already claimed by earlier ranges.', {
+                    tone: 'error',
+                    durationMs: 7000,
+                });
+                return null;
+            }
+            const ownerName = userState.isLoggedIn ? userState.name : 'Anonymous user';
+            const range = {
+                id: `local-claim-${Date.now()}-${claimedRangeSequence}`,
+                ownerName,
+                status: 'owned',
+                previousOwnerId: null,
+                previousOwnerName: null,
+                droppedAt: null,
+                bounds: { ...bounds },
+                coordinates,
+                keys: Array.from(keys),
+                metrics,
+                zoningRings: evaluateSelectionState.zoningRings,
+                zoningRingKeys,
+                ttkValue: valuation.totalTtkValue,
+                imageSourceDataUrl: '',
+                imageDataUrl: '',
+                imageCrop: null,
+                title: 'Claimed Range Name',
+                description: '',
+                redirectUrl: '',
+                tags: [],
+            };
+
+            claimedRangeSequence += 1;
+            maps[activeMapIndex].claimedRanges = maps[activeMapIndex].claimedRanges || [];
+            maps[activeMapIndex].claimedRanges.push(range);
+            claimedRanges = maps[activeMapIndex].claimedRanges;
+            selectedClaimedRangeId = range.id;
+            renderActiveMapDetails();
+            clearTileSelection();
+            try {
+                await persistClaimedRange(range);
+                return range;
+            } catch (error) {
+                maps[activeMapIndex].claimedRanges = (maps[activeMapIndex].claimedRanges || [])
+                    .filter((existingRange) => existingRange.id !== range.id);
+                claimedRanges = maps[activeMapIndex].claimedRanges;
+                selectedClaimedRangeId = null;
+                writeStoredClaimedRanges(maps[activeMapIndex].id, maps[activeMapIndex].claimedRanges);
+                renderActiveMapDetails();
+                showToast(error.message || 'Unable to claim range right now.', {
+                    tone: 'error',
+                    durationMs: 7000,
+                });
+                scheduleRender();
+                return null;
+            }
+        }
+
+        async function dropViewedClaimRange() {
+            if (!claimSelectionState.viewingClaimId) {
+                return false;
+            }
+
+            const activeMap = maps[activeMapIndex];
+            const viewedClaim = getClaimedRangeById(claimSelectionState.viewingClaimId);
+            if (!activeMap || !viewedClaim) {
+                return false;
+            }
+            if (isAuctionRange(viewedClaim)) {
+                showToast('This range has already been dropped.', {
+                    tone: 'info',
+                    durationMs: 5000,
+                });
+                return false;
+            }
+
+            try {
+                const response = await fetch(
+                    `/api/maps/${encodeURIComponent(activeMap.id)}/claims/${encodeURIComponent(viewedClaim.id)}/drop`,
+                    { method: 'POST' }
+                );
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(result.error || 'Unable to drop this range.');
+                }
+
+                if (result.claim) {
+                    replaceClaimedRange(viewedClaim.id, result.claim);
+                }
+                if (result.user) {
+                    setAuthenticatedUser(result.user);
+                }
+                const droppedRangeName = getClaimTitleValueOrDefault(viewedClaim.title);
+                showToast(`Range "${droppedRangeName}" has been dropped.`, {
+                    tone: 'success',
+                    durationMs: 6000,
+                });
+                scheduleRender();
+                return true;
+            } catch (error) {
+                showToast(error.message || 'Unable to drop this range right now.', {
+                    tone: 'error',
+                    durationMs: 7000,
+                });
+                return false;
+            }
+        }
+
+        function getSelectionKeys() {
+            if (selectionState.draft) {
+                const draftKeys = selectionState.mode === 'area'
+                    ? createTileKeySetFromBounds(getSelectionBounds(selectionState.draft))
+                    : selectionState.draft.visitedKeys;
+
+                if (selectionState.draft.operation === 'remove') {
+                    const resultKeys = new Set(selectionState.draft.baseKeys || []);
+                    for (const key of draftKeys || []) {
+                        resultKeys.delete(key);
+                    }
+                    return resultKeys;
+                }
+
+                return draftKeys;
+            }
+
+            if (selectionState.mode === 'area') {
+                if (selectionState.committedKeys.size) {
+                    return selectionState.committedKeys;
+                }
+
+                const bounds = getCurrentSelectionBounds();
+                return createTileKeySetFromBounds(bounds);
+            }
+
+            return selectionState.committedKeys;
+        }
+
+        function getSelectionMetrics() {
+            const keys = getSelectionKeys();
+            if (!keys?.size) {
+                return null;
+            }
+
+            const cols = new Set();
+            const rows = new Set();
+
+            for (const key of keys) {
+                const { col, row } = parseTileKey(key);
+                cols.add(col);
+                rows.add(row);
+            }
+
+            return {
+                xCount: cols.size,
+                yCount: rows.size,
+                total: keys.size,
+            };
+        }
+
+        function getSelectionMetricsFromKeys(keys) {
+            if (!keys?.size) {
+                return null;
+            }
+
+            const cols = new Set();
+            const rows = new Set();
+
+            for (const key of keys) {
+                const { col, row } = parseTileKey(key);
+                cols.add(col);
+                rows.add(row);
+            }
+
+            return {
+                xCount: cols.size,
+                yCount: rows.size,
+                total: keys.size,
+            };
+        }
+
+        function getConfettiRingColor(ringIndex) {
+            const ringColors = ['#ead94c', '#d0b41e', '#8b6a15'];
+            return ringColors[Math.max(0, Math.min(ringColors.length - 1, ringIndex - 1))];
+        }
+
+        function getRingKeysForBounds(bounds, ringIndex) {
+            if (!bounds || ringIndex < 1) {
+                return new Set();
+            }
+
+            const outerBounds = {
+                minCol: bounds.minCol - ringIndex,
+                maxCol: bounds.maxCol + ringIndex,
+                minRow: bounds.minRow - ringIndex,
+                maxRow: bounds.maxRow + ringIndex,
+            };
+            const innerBounds = {
+                minCol: bounds.minCol - ringIndex + 1,
+                maxCol: bounds.maxCol + ringIndex - 1,
+                minRow: bounds.minRow - ringIndex + 1,
+                maxRow: bounds.maxRow + ringIndex - 1,
+            };
+            const ringKeys = new Set();
+
+            for (let row = outerBounds.minRow; row <= outerBounds.maxRow; row += 1) {
+                for (let col = outerBounds.minCol; col <= outerBounds.maxCol; col += 1) {
+                    const isInsideInnerBounds = row >= innerBounds.minRow
+                        && row <= innerBounds.maxRow
+                        && col >= innerBounds.minCol
+                        && col <= innerBounds.maxCol;
+
+                    if (isInsideInnerBounds) {
+                        continue;
+                    }
+
+                    ringKeys.add(tileKey(col, row));
+                }
+            }
+
+            return ringKeys;
+        }
+
+        function getZoningRingBreakdown(bounds, ringCount, occupiedKeys = null) {
+            const ringMultipliers = [1.25, 1.5, 2];
+            const breakdown = [];
+            const blockedKeys = occupiedKeys || new Set();
+
+            for (let ringIndex = 1; ringIndex <= ringCount; ringIndex += 1) {
+                const ringKeys = getRingKeysForBounds(bounds, ringIndex);
+                const keys = new Set();
+                for (const key of ringKeys) {
+                    if (!blockedKeys.has(key)) {
+                        keys.add(key);
+                    }
+                }
+                const multiplier = ringMultipliers[ringIndex - 1] || ringMultipliers[ringMultipliers.length - 1];
+                breakdown.push({
+                    ringIndex,
+                    keys,
+                    tileCount: keys.size,
+                    multiplier,
+                    ttkValue: getTileTtkValue(keys.size) * multiplier,
+                });
+            }
+
+            return breakdown;
+        }
+
+        function getSelectionClaimValuation(keys, bounds, ringCount, occupiedKeys = null) {
+            const baseTileCount = keys?.size || 0;
+            const baseTtkValue = getTileTtkValue(baseTileCount);
+            const ringBreakdown = getZoningRingBreakdown(bounds, ringCount, occupiedKeys);
+            const totalTtkValue = baseTtkValue + ringBreakdown.reduce((sum, ring) => sum + ring.ttkValue, 0);
+
+            return {
+                baseTileCount,
+                baseTtkValue,
+                ringBreakdown,
+                totalTtkValue,
+            };
+        }
+
+        function renderZoningRingBreakdown(ringBreakdown, activeRingCount) {
+            return [1, 2, 3].map((ringIndex) => {
+                const ring = ringBreakdown.find((entry) => entry.ringIndex === ringIndex);
+                const isActive = ringIndex <= activeRingCount;
+                const tileCount = ring?.tileCount || 0;
+                const ttkValue = ring ? formatTtkValue(ring.ttkValue) : formatTtkValue(0);
+
+                return `
+                    <div class="flex items-center justify-between gap-3 ${isActive ? 'text-woodsmoke-600' : 'text-woodsmoke-400'}">
+                        <span>Ring ${ringIndex}: ${ringIndex === 1 ? '1.25x' : ringIndex === 2 ? '1.5x' : '2x'}</span>
+                        <span>${tileCount} tile${tileCount === 1 ? '' : 's'} · ${ttkValue}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function getTileUsdValue(tileCount) {
+            return tileCount * config.defaultTileUsdValue;
+        }
+
+        function getTileTtkValue(tileCount) {
+            return getTileUsdValue(tileCount) / config.ttkUsdRate;
+        }
+
+        function formatUsdValue(value) {
+            const normalizedValue = Number(value);
+            if (!Number.isFinite(normalizedValue)) {
+                return '$0.00';
+            }
+
+            return `$${new Intl.NumberFormat('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            }).format(normalizedValue)}`;
+        }
+
+        function formatTtkValue(value) {
+            const normalizedValue = Number(value);
+            if (!Number.isFinite(normalizedValue)) {
+                return '0.00 TTK';
+            }
+
+            const formattedValue = new Intl.NumberFormat('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            }).format(normalizedValue);
+
+            return `${formattedValue} TTK`;
+        }
+
+        function formatTileCountValue(value) {
+            const normalizedValue = Number(value);
+            const decimals = normalizedValue % 1 === 0 ? 0 : 2;
+            return `${normalizedValue.toFixed(decimals)} tile${Math.abs(normalizedValue - 1) < 0.0001 ? '' : 's'}`;
+        }
+
+        function normalizeTopUpTtkAmount(value) {
+            const parsed = Number(value);
+            if (!Number.isFinite(parsed)) {
+                return null;
+            }
+
+            return Number(parsed.toFixed(2));
+        }
+
+        function getTopUpAmountSummary(value = userState.topUpTtkAmount, currency = userState.topUpInputCurrency) {
+            const normalizedDisplayAmount = normalizeTopUpTtkAmount(value);
+            if (normalizedDisplayAmount === null) {
+                return {
+                    amount: null,
+                    displayAmount: null,
+                    usdValue: null,
+                    error: `Enter a valid ${currency.toUpperCase()} amount.`,
+                };
+            }
+
+            const ttkAmount = currency === 'usd'
+                ? Number((normalizedDisplayAmount / config.ttkUsdRate).toFixed(2))
+                : normalizedDisplayAmount;
+            const usdValue = currency === 'usd'
+                ? normalizedDisplayAmount
+                : Number((normalizedDisplayAmount * config.ttkUsdRate).toFixed(2));
+
+            if (ttkAmount < config.minTopUpTtk || ttkAmount > config.maxTopUpTtk) {
+                return {
+                    amount: ttkAmount,
+                    displayAmount: normalizedDisplayAmount,
+                    usdValue,
+                    error: currency === 'usd'
+                        ? `Enter between ${formatUsdValue(config.minTopUpUsd)} and ${formatUsdValue(config.maxTopUpUsd)}.`
+                        : `Enter between ${config.minTopUpTtk.toFixed(2)} TTK and ${config.maxTopUpTtk.toFixed(2)} TTK.`,
+                };
+            }
+
+            return {
+                amount: ttkAmount,
+                displayAmount: normalizedDisplayAmount,
+                usdValue,
+                error: '',
+            };
+        }
+
+        function refreshTopUpInputFeedback() {
+            const topUpSummary = getTopUpAmountSummary();
+            const topUpConversionHint = document.getElementById('topUpConversionHint');
+            const topUpValidationWrap = document.getElementById('topUpValidationWrap');
+            const topUpValidationMessage = document.getElementById('topUpValidationMessage');
+            const topUpButton = document.getElementById('topUpTtkButton');
+
+            if (topUpConversionHint) {
+                const hintText = topUpSummary.displayAmount !== null
+                    ? userState.topUpInputCurrency === 'usd'
+                        ? `${formatUsdValue(topUpSummary.displayAmount)} = ${formatTtkValue(topUpSummary.amount)}`
+                        : `${formatTtkValue(topUpSummary.displayAmount)} = ${formatUsdValue(topUpSummary.usdValue)}`
+                    : '';
+
+                topUpConversionHint.textContent = hintText;
+                topUpConversionHint.classList.toggle('hidden', !hintText);
+            }
+
+            if (topUpValidationWrap) {
+                topUpValidationWrap.classList.toggle('hidden', !topUpSummary.error);
+            }
+
+            if (topUpValidationMessage) {
+                topUpValidationMessage.textContent = topUpSummary.error || '';
+            }
+
+            if (topUpButton) {
+                topUpButton.disabled = userState.isStartingTopUp || Boolean(topUpSummary.error);
+            }
+        }
+
+        function addHoveredTilesBetween(visitedKeys, fromTile, toTile, maxTiles = Infinity) {
+            const deltaCol = toTile.col - fromTile.col;
+            const deltaRow = toTile.row - fromTile.row;
+            const steps = Math.max(Math.abs(deltaCol), Math.abs(deltaRow));
+            let limitReached = false;
+
+            if (steps === 0) {
+                const key = tileKey(toTile.col, toTile.row);
+                if (visitedKeys.has(key) || visitedKeys.size < maxTiles) {
+                    visitedKeys.add(key);
+                } else {
+                    limitReached = true;
+                }
+
+                return { visitedKeys, limitReached };
+            }
+
+            for (let step = 0; step <= steps; step += 1) {
+                const progress = step / steps;
+                const col = Math.round(fromTile.col + deltaCol * progress);
+                const row = Math.round(fromTile.row + deltaRow * progress);
+                const key = tileKey(col, row);
+
+                if (visitedKeys.has(key) || visitedKeys.size < maxTiles) {
+                    visitedKeys.add(key);
+                    continue;
+                }
+
+                limitReached = true;
+                break;
+            }
+
+            return { visitedKeys, limitReached };
+        }
+
+        function createSelectionDraft(startTile, operation = 'replace') {
+            const visitedKeys = new Set([tileKey(startTile.col, startTile.row)]);
+
+            return {
+                operation,
+                baseKeys: operation === 'remove' ? new Set(getSelectionKeys() || []) : new Set(),
+                startTile,
+                endTile: startTile,
+                lastTile: startTile,
+                visitedKeys,
+                limitReached: false,
+            };
+        }
+
+        function extendSelectionDraft(selectionDraft, nextTile) {
+            if (!selectionDraft) {
+                return null;
+            }
+
+            if (selectionState.mode === 'area') {
+                const clampedTile = clampAreaSelectionEnd(selectionDraft.startTile, nextTile);
+                const areaBounds = getSelectionBounds({
+                    startTile: selectionDraft.startTile,
+                    endTile: clampedTile,
+                });
+                const xCount = areaBounds ? areaBounds.maxCol - areaBounds.minCol + 1 : 0;
+                const yCount = areaBounds ? areaBounds.maxRow - areaBounds.minRow + 1 : 0;
+                const limitReached = xCount >= config.maxSelectionCols || yCount >= config.maxSelectionRows;
+
+                return {
+                    ...selectionDraft,
+                    endTile: clampedTile,
+                    lastTile: clampedTile,
+                    visitedKeys: selectionDraft.visitedKeys,
+                    limitReached,
+                };
+            }
+
+            if (selectionState.mode === 'path') {
+                const maxTiles = selectionDraft.operation === 'remove' ? Infinity : config.maxSelectionCols * config.maxSelectionRows;
+                const { visitedKeys, limitReached } = addHoveredTilesBetween(
+                    selectionDraft.visitedKeys,
+                    selectionDraft.lastTile,
+                    nextTile,
+                    maxTiles
+                );
+
+                return {
+                    ...selectionDraft,
+                    endTile: nextTile,
+                    lastTile: nextTile,
+                    visitedKeys,
+                    limitReached,
+                };
+            }
+
+            return selectionDraft;
+        }
+
+        function renderSelectionModeToggle() {
+            const isAreaMode = selectionState.mode === 'area';
+            const shouldShowToggle = mouse.mode === 'select' || Boolean(getSelectionMetrics());
+
+            selectionModeControl.classList.toggle('hidden', !shouldShowToggle);
+            selectionModeControl.classList.toggle('flex', shouldShowToggle);
+            selectionModeAreaButton.setAttribute('aria-selected', String(isAreaMode));
+            selectionModePathButton.setAttribute('aria-selected', String(!isAreaMode));
+            selectionModeAreaButton.className = isAreaMode
+                ? 'rounded-md bg-iron-50 px-3 py-1.5 text-[0.72rem] font-semibold text-woodsmoke-900 shadow-sm transition'
+                : 'rounded-md px-3 py-1.5 text-[0.72rem] font-semibold text-woodsmoke-500 transition hover:text-woodsmoke-700';
+            selectionModePathButton.className = isAreaMode
+                ? 'rounded-md px-3 py-1.5 text-[0.72rem] font-semibold text-woodsmoke-500 transition hover:text-woodsmoke-700'
+                : 'rounded-md bg-iron-50 px-3 py-1.5 text-[0.72rem] font-semibold text-woodsmoke-900 shadow-sm transition';
+            selectionModeTitle.textContent = 'Selection Mode';
+            selectionModeDescription.textContent = isAreaMode
+                ? 'Fills every tile inside the dragged range.'
+                : 'Keeps only the tiles your pointer crosses.';
+        }
+
+        function closeClaimSelectionModal() {
+            const wasViewingClaim = Boolean(claimSelectionState.viewingClaimId);
+            claimSelectionState.isOpen = false;
+            claimSelectionState.viewingClaimId = null;
+            claimSelectionState.isEditingTitle = false;
+            claimSelectionModal.classList.add('hidden');
+            claimSelectionState.modalPosition = null;
+            claimSelectionModalDragState.pointerId = null;
+            if (wasViewingClaim) {
+                setClaimSelectionImage('');
+            }
+        }
+
+        function closeEvaluateSelectionModal() {
+            evaluateSelectionState.isOpen = false;
+            evaluateSelectionState.isClaiming = false;
+            evaluateSelectionModal.classList.add('hidden');
+            evaluateSelectionState.modalPosition = null;
+            evaluateSelectionModalDragState.pointerId = null;
+        }
+
+        function renderEvaluateClaimButton(ttkValue) {
+            if (evaluateSelectionState.isClaiming) {
+                confirmEvaluateSelectionButton.disabled = true;
+                confirmEvaluateSelectionButton.classList.add('opacity-90', 'cursor-not-allowed');
+                confirmEvaluateSelectionButton.innerHTML = `
+                    <span class="inline-flex items-center gap-2">
+                        <span class="inline-flex h-4 w-4 items-center justify-center" aria-hidden="true">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24">
+                                <path d="M0 0h24v24H0z" fill="none" />
+                                <circle cx="4" cy="12" r="3" fill="currentColor">
+                                    <animate id="SVG7x14Dcom" fill="freeze" attributeName="opacity" begin="0;SVGqSjG0dUp.end-0.25s" dur="0.75s" values="1;.2" />
+                                </circle>
+                                <circle cx="12" cy="12" r="3" fill="currentColor" opacity=".4">
+                                    <animate fill="freeze" attributeName="opacity" begin="SVG7x14Dcom.begin+0.15s" dur="0.75s" values="1;.2" />
+                                </circle>
+                                <circle cx="20" cy="12" r="3" fill="currentColor" opacity=".3">
+                                    <animate id="SVGqSjG0dUp" fill="freeze" attributeName="opacity" begin="SVG7x14Dcom.begin+0.3s" dur="0.75s" values="1;.2" />
+                                </circle>
+                            </svg>
+                        </span>
+                        Processing...
+                    </span>
+                `;
+                return;
+            }
+
+            confirmEvaluateSelectionButton.disabled = false;
+            confirmEvaluateSelectionButton.classList.remove('opacity-90', 'cursor-not-allowed');
+            confirmEvaluateSelectionButton.textContent = `Claim Range - ${ttkValue}`;
+        }
+
+        function clampClaimSelectionModalPosition(left, top) {
+            const modalWidth = claimSelectionModal.offsetWidth || 380;
+            const modalHeight = claimSelectionModal.offsetHeight || 500;
+
+            return {
+                left: Math.max(12, Math.min(wrapper.clientWidth - modalWidth - 12, left)),
+                top: Math.max(12, Math.min(wrapper.clientHeight - modalHeight - 12, top)),
+            };
+        }
+
+        function clampEvaluateSelectionModalPosition(left, top) {
+            const modalWidth = evaluateSelectionModal.offsetWidth || 380;
+            const modalHeight = evaluateSelectionModal.offsetHeight || 500;
+
+            return {
+                left: Math.max(12, Math.min(wrapper.clientWidth - modalWidth - 12, left)),
+                top: Math.max(12, Math.min(wrapper.clientHeight - modalHeight - 12, top)),
+            };
+        }
+
+        function applyClaimSelectionModalPosition(position) {
+            claimSelectionModal.style.left = `${position.left}px`;
+            claimSelectionModal.style.top = `${position.top}px`;
+        }
+
+        function applyEvaluateSelectionModalPosition(position) {
+            evaluateSelectionModal.style.left = `${position.left}px`;
+            evaluateSelectionModal.style.top = `${position.top}px`;
+        }
+
+        function startClaimSelectionModalDrag(e) {
+            if (!claimSelectionState.isOpen || e.button !== 0) {
+                return;
+            }
+            if (e.target && e.target.closest && e.target.closest('button, input, textarea, select, a')) {
+                return;
+            }
+
+            const rect = claimSelectionModal.getBoundingClientRect();
+            const wrapperRect = wrapper.getBoundingClientRect();
+            claimSelectionModalDragState.pointerId = e.pointerId;
+            claimSelectionModalDragState.offsetX = e.clientX - rect.left;
+            claimSelectionModalDragState.offsetY = e.clientY - rect.top;
+            claimSelectionState.modalPosition = clampClaimSelectionModalPosition(
+                rect.left - wrapperRect.left,
+                rect.top - wrapperRect.top
+            );
+
+            claimSelectionModalDragHandle.setPointerCapture(e.pointerId);
+            e.preventDefault();
+        }
+
+        function updateClaimSelectionModalDrag(e) {
+            if (claimSelectionModalDragState.pointerId !== e.pointerId) {
+                return;
+            }
+
+            const wrapperRect = wrapper.getBoundingClientRect();
+            claimSelectionState.modalPosition = clampClaimSelectionModalPosition(
+                e.clientX - wrapperRect.left - claimSelectionModalDragState.offsetX,
+                e.clientY - wrapperRect.top - claimSelectionModalDragState.offsetY
+            );
+            applyClaimSelectionModalPosition(claimSelectionState.modalPosition);
+        }
+
+        function stopClaimSelectionModalDrag(e) {
+            if (claimSelectionModalDragState.pointerId !== e.pointerId) {
+                return;
+            }
+
+            if (claimSelectionModalDragHandle.hasPointerCapture(e.pointerId)) {
+                claimSelectionModalDragHandle.releasePointerCapture(e.pointerId);
+            }
+
+            claimSelectionModalDragState.pointerId = null;
+        }
+
+        function startEvaluateSelectionModalDrag(e) {
+            if (!evaluateSelectionState.isOpen || e.button !== 0) {
+                return;
+            }
+            if (e.target && e.target.closest && e.target.closest('button, input, textarea, select, a')) {
+                return;
+            }
+
+            const rect = evaluateSelectionModal.getBoundingClientRect();
+            const wrapperRect = wrapper.getBoundingClientRect();
+            evaluateSelectionModalDragState.pointerId = e.pointerId;
+            evaluateSelectionModalDragState.offsetX = e.clientX - rect.left;
+            evaluateSelectionModalDragState.offsetY = e.clientY - rect.top;
+            evaluateSelectionState.modalPosition = clampEvaluateSelectionModalPosition(
+                rect.left - wrapperRect.left,
+                rect.top - wrapperRect.top
+            );
+
+            evaluateSelectionModalDragHandle.setPointerCapture(e.pointerId);
+            e.preventDefault();
+        }
+
+        function updateEvaluateSelectionModalDrag(e) {
+            if (evaluateSelectionModalDragState.pointerId !== e.pointerId) {
+                return;
+            }
+
+            const wrapperRect = wrapper.getBoundingClientRect();
+            evaluateSelectionState.modalPosition = clampEvaluateSelectionModalPosition(
+                e.clientX - wrapperRect.left - evaluateSelectionModalDragState.offsetX,
+                e.clientY - wrapperRect.top - evaluateSelectionModalDragState.offsetY
+            );
+            applyEvaluateSelectionModalPosition(evaluateSelectionState.modalPosition);
+        }
+
+        function stopEvaluateSelectionModalDrag(e) {
+            if (evaluateSelectionModalDragState.pointerId !== e.pointerId) {
+                return;
+            }
+
+            if (evaluateSelectionModalDragHandle.hasPointerCapture(e.pointerId)) {
+                evaluateSelectionModalDragHandle.releasePointerCapture(e.pointerId);
+            }
+
+            evaluateSelectionModalDragState.pointerId = null;
+        }
+
+        function startClaimSelectionCropDrag(e) {
+            if (!claimSelectionCropState.rawImageDataUrl || !claimSelectionCropState.isCropMode) {
+                return;
+            }
+            if (claimSelectionCropState.isResizing || claimSelectionCropState.mouseResizeActive) {
+                return;
+            }
+            if (typeof e.button === 'number' && e.button !== 0) {
+                return;
+            }
+            const cropRect = claimSelectionCropBox.getBoundingClientRect();
+            claimSelectionCropState.isDragging = true;
+            claimSelectionCropState.pointerId = e.pointerId;
+            claimSelectionCropState.dragOffsetX = e.clientX - cropRect.left;
+            claimSelectionCropState.dragOffsetY = e.clientY - cropRect.top;
+            claimSelectionImageContainer.setPointerCapture(e.pointerId);
+            e.preventDefault();
+        }
+
+        function updateClaimSelectionCropDrag(e) {
+            if (!claimSelectionCropState.isDragging || claimSelectionCropState.pointerId !== e.pointerId) {
+                return;
+            }
+            const containerRect = claimSelectionImageContainer.getBoundingClientRect();
+            const minCropLeft = claimSelectionCropState.renderedLeft;
+            const maxCropLeft = claimSelectionCropState.renderedLeft + claimSelectionCropState.renderedWidth - claimSelectionCropState.cropWidth;
+            const minCropTop = claimSelectionCropState.renderedTop;
+            const maxCropTop = claimSelectionCropState.renderedTop + claimSelectionCropState.renderedHeight - claimSelectionCropState.cropHeight;
+
+            const nextLeft = Math.min(
+                maxCropLeft,
+                Math.max(minCropLeft, e.clientX - containerRect.left - claimSelectionCropState.dragOffsetX)
+            );
+            const nextTop = Math.min(
+                maxCropTop,
+                Math.max(minCropTop, e.clientY - containerRect.top - claimSelectionCropState.dragOffsetY)
+            );
+
+            claimSelectionCropState.cropLeft = nextLeft;
+            claimSelectionCropState.cropTop = nextTop;
+            claimSelectionCropState.panX = maxCropLeft > minCropLeft ? (nextLeft - minCropLeft) / (maxCropLeft - minCropLeft) : 0.5;
+            claimSelectionCropState.panY = maxCropTop > minCropTop ? (nextTop - minCropTop) / (maxCropTop - minCropTop) : 0.5;
+
+            claimSelectionCropBox.style.left = `${nextLeft}px`;
+            claimSelectionCropBox.style.top = `${nextTop}px`;
+            exportClaimSelectionCroppedImage();
+        }
+
+        function stopClaimSelectionCropDrag(e) {
+            if (!claimSelectionCropState.isDragging || claimSelectionCropState.pointerId !== e.pointerId) {
+                return;
+            }
+            if (claimSelectionImageContainer.hasPointerCapture(e.pointerId)) {
+                claimSelectionImageContainer.releasePointerCapture(e.pointerId);
+            }
+            claimSelectionCropState.isDragging = false;
+            claimSelectionCropState.pointerId = null;
+        }
+
+        function startClaimSelectionCropMouseDrag(e) {
+            if (!claimSelectionCropState.rawImageDataUrl || !claimSelectionCropState.isCropMode || e.button !== 0) {
+                return;
+            }
+            if (claimSelectionCropState.isResizing || claimSelectionCropState.mouseResizeActive) {
+                return;
+            }
+            const cropRect = claimSelectionCropBox.getBoundingClientRect();
+            claimSelectionCropState.mouseDragActive = true;
+            claimSelectionCropState.dragOffsetX = e.clientX - cropRect.left;
+            claimSelectionCropState.dragOffsetY = e.clientY - cropRect.top;
+            e.preventDefault();
+        }
+
+        function applyClaimSelectionCropResize(clientX, clientY) {
+            const containerRect = claimSelectionImageContainer.getBoundingClientRect();
+            const ratio = claimSelectionCropState.maxCropWidth / Math.max(1, claimSelectionCropState.maxCropHeight);
+            const widthByX = clientX - containerRect.left - claimSelectionCropState.cropLeft;
+            const heightByY = clientY - containerRect.top - claimSelectionCropState.cropTop;
+            const widthByY = heightByY * ratio;
+            const minCropWidth = Math.max(36, claimSelectionCropState.maxCropWidth * 0.25);
+            const nextCropWidth = Math.min(
+                claimSelectionCropState.maxCropWidth,
+                Math.max(minCropWidth, Math.min(widthByX, widthByY))
+            );
+
+            claimSelectionCropState.cropScale = Math.max(0.01, nextCropWidth / Math.max(1, claimSelectionCropState.maxCropWidth));
+            updateClaimSelectionCropLayout();
+            exportClaimSelectionCroppedImage();
+        }
+
+        function startClaimSelectionCropResize(e) {
+            if (!claimSelectionCropState.rawImageDataUrl || !claimSelectionCropState.isCropMode) {
+                return;
+            }
+            if (typeof e.button === 'number' && e.button !== 0) {
+                return;
+            }
+            claimSelectionCropState.isResizing = true;
+            claimSelectionCropState.pointerId = e.pointerId;
+            claimSelectionImageContainer.setPointerCapture(e.pointerId);
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        function updateClaimSelectionCropResize(e) {
+            if (!claimSelectionCropState.isResizing || claimSelectionCropState.pointerId !== e.pointerId) {
+                return;
+            }
+            applyClaimSelectionCropResize(e.clientX, e.clientY);
+            e.preventDefault();
+        }
+
+        function stopClaimSelectionCropResize(e) {
+            if (!claimSelectionCropState.isResizing || claimSelectionCropState.pointerId !== e.pointerId) {
+                return;
+            }
+            if (claimSelectionImageContainer.hasPointerCapture(e.pointerId)) {
+                claimSelectionImageContainer.releasePointerCapture(e.pointerId);
+            }
+            claimSelectionCropState.isResizing = false;
+            claimSelectionCropState.pointerId = null;
+            syncClaimSelectionInputsToViewedClaim();
+        }
+
+        function startClaimSelectionCropMouseResize(e) {
+            if (!claimSelectionCropState.rawImageDataUrl || !claimSelectionCropState.isCropMode || e.button !== 0) {
+                return;
+            }
+            claimSelectionCropState.mouseResizeActive = true;
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        function updateClaimSelectionCropMouseResize(e) {
+            if (!claimSelectionCropState.mouseResizeActive) {
+                return;
+            }
+            applyClaimSelectionCropResize(e.clientX, e.clientY);
+        }
+
+        function stopClaimSelectionCropMouseResize() {
+            if (!claimSelectionCropState.mouseResizeActive) {
+                return;
+            }
+            claimSelectionCropState.mouseResizeActive = false;
+            syncClaimSelectionInputsToViewedClaim();
+        }
+
+        function updateClaimSelectionCropMouseDrag(e) {
+            if (!claimSelectionCropState.mouseDragActive) {
+                return;
+            }
+            const containerRect = claimSelectionImageContainer.getBoundingClientRect();
+            const minCropLeft = claimSelectionCropState.renderedLeft;
+            const maxCropLeft = claimSelectionCropState.renderedLeft + claimSelectionCropState.renderedWidth - claimSelectionCropState.cropWidth;
+            const minCropTop = claimSelectionCropState.renderedTop;
+            const maxCropTop = claimSelectionCropState.renderedTop + claimSelectionCropState.renderedHeight - claimSelectionCropState.cropHeight;
+
+            const nextLeft = Math.min(maxCropLeft, Math.max(minCropLeft, e.clientX - containerRect.left - claimSelectionCropState.dragOffsetX));
+            const nextTop = Math.min(maxCropTop, Math.max(minCropTop, e.clientY - containerRect.top - claimSelectionCropState.dragOffsetY));
+
+            claimSelectionCropState.cropLeft = nextLeft;
+            claimSelectionCropState.cropTop = nextTop;
+            claimSelectionCropState.panX = maxCropLeft > minCropLeft ? (nextLeft - minCropLeft) / (maxCropLeft - minCropLeft) : 0.5;
+            claimSelectionCropState.panY = maxCropTop > minCropTop ? (nextTop - minCropTop) / (maxCropTop - minCropTop) : 0.5;
+            claimSelectionCropBox.style.left = `${nextLeft}px`;
+            claimSelectionCropBox.style.top = `${nextTop}px`;
+            exportClaimSelectionCroppedImage();
+        }
+
+        function stopClaimSelectionCropMouseDrag() {
+            if (!claimSelectionCropState.mouseDragActive) {
+                return;
+            }
+            claimSelectionCropState.mouseDragActive = false;
+            syncClaimSelectionInputsToViewedClaim();
+        }
+
+        function worldPointToWrapperPoint(worldX, worldY) {
+            return {
+                x: (worldX + camera.x) * camera.zoom + canvas.width / 2,
+                y: (worldY + camera.y) * camera.zoom + canvas.height / 2,
+            };
+        }
+
+        function updateClaimSelectionCropLayout() {
+            if (!claimSelectionCropState.sourceWidth || !claimSelectionCropState.sourceHeight) {
+                return;
+            }
+            const containerWidth = claimSelectionImageContainer.clientWidth;
+            const containerHeight = claimSelectionImageContainer.clientHeight;
+            if (!containerWidth || !containerHeight) {
+                return;
+            }
+
+            const imageScale = Math.min(
+                containerWidth / claimSelectionCropState.sourceWidth,
+                containerHeight / claimSelectionCropState.sourceHeight
+            );
+            const renderedWidth = claimSelectionCropState.sourceWidth * imageScale;
+            const renderedHeight = claimSelectionCropState.sourceHeight * imageScale;
+            const renderedLeft = (containerWidth - renderedWidth) / 2;
+            const renderedTop = (containerHeight - renderedHeight) / 2;
+
+            const bounds = claimSelectionState.viewingClaimId
+                ? getClaimedRangeById(claimSelectionState.viewingClaimId)?.bounds
+                : getCommittedSelectionBounds();
+            const targetRatio = getClaimSelectionAspectRatio(bounds);
+            let maxCropWidth = renderedWidth;
+            let maxCropHeight = maxCropWidth / targetRatio;
+            if (maxCropHeight > renderedHeight) {
+                maxCropHeight = renderedHeight;
+                maxCropWidth = maxCropHeight * targetRatio;
+            }
+            const cropScale = Math.max(0.25, Math.min(1, claimSelectionCropState.cropScale || 1));
+            const cropWidth = maxCropWidth * cropScale;
+            const cropHeight = maxCropHeight * cropScale;
+
+            const minCropLeft = renderedLeft;
+            const maxCropLeft = renderedLeft + renderedWidth - cropWidth;
+            const minCropTop = renderedTop;
+            const maxCropTop = renderedTop + renderedHeight - cropHeight;
+            const cropLeft = minCropLeft + (maxCropLeft - minCropLeft) * claimSelectionCropState.panX;
+            const cropTop = minCropTop + (maxCropTop - minCropTop) * claimSelectionCropState.panY;
+
+            claimSelectionCropState.renderedWidth = renderedWidth;
+            claimSelectionCropState.renderedHeight = renderedHeight;
+            claimSelectionCropState.renderedLeft = renderedLeft;
+            claimSelectionCropState.renderedTop = renderedTop;
+            claimSelectionCropState.cropWidth = cropWidth;
+            claimSelectionCropState.cropHeight = cropHeight;
+            claimSelectionCropState.maxCropWidth = maxCropWidth;
+            claimSelectionCropState.maxCropHeight = maxCropHeight;
+            claimSelectionCropState.cropLeft = cropLeft;
+            claimSelectionCropState.cropTop = cropTop;
+
+            claimSelectionImagePreview.style.width = `${renderedWidth}px`;
+            claimSelectionImagePreview.style.height = `${renderedHeight}px`;
+            claimSelectionImagePreview.style.left = `${renderedLeft}px`;
+            claimSelectionImagePreview.style.top = `${renderedTop}px`;
+            claimSelectionCropBox.style.width = `${cropWidth}px`;
+            claimSelectionCropBox.style.height = `${cropHeight}px`;
+            claimSelectionCropBox.style.left = `${cropLeft}px`;
+            claimSelectionCropBox.style.top = `${cropTop}px`;
+        }
+
+        function applyConfirmedClaimSelectionCrop() {
+            claimSelectionCropState.panX = claimSelectionCropState.confirmedPanX;
+            claimSelectionCropState.panY = claimSelectionCropState.confirmedPanY;
+            claimSelectionCropState.cropScale = claimSelectionCropState.confirmedCropScale;
+            updateClaimSelectionCropLayout();
+            exportClaimSelectionCroppedImage();
+        }
+
+        function getClaimSelectionCropSnapshot() {
+            const snapshotPanX = claimSelectionCropState.isCropMode
+                ? claimSelectionCropState.panX
+                : claimSelectionCropState.confirmedPanX;
+            const snapshotPanY = claimSelectionCropState.isCropMode
+                ? claimSelectionCropState.panY
+                : claimSelectionCropState.confirmedPanY;
+            const snapshotCropScale = claimSelectionCropState.isCropMode
+                ? claimSelectionCropState.cropScale
+                : claimSelectionCropState.confirmedCropScale;
+            return {
+                panX: Number.isFinite(snapshotPanX) ? snapshotPanX : 0.5,
+                panY: Number.isFinite(snapshotPanY) ? snapshotPanY : 0.5,
+                cropScale: Number.isFinite(snapshotCropScale) ? snapshotCropScale : 1,
+            };
+        }
+
+        function applyClaimSelectionCropSnapshot(snapshot) {
+            const nextPanX = Number(snapshot?.panX);
+            const nextPanY = Number(snapshot?.panY);
+            const nextCropScale = Number(snapshot?.cropScale);
+
+            claimSelectionCropState.confirmedPanX = Number.isFinite(nextPanX) ? Math.max(0, Math.min(1, nextPanX)) : 0.5;
+            claimSelectionCropState.confirmedPanY = Number.isFinite(nextPanY) ? Math.max(0, Math.min(1, nextPanY)) : 0.5;
+            claimSelectionCropState.confirmedCropScale = Number.isFinite(nextCropScale)
+                ? Math.max(0.25, Math.min(1, nextCropScale))
+                : 1;
+            claimSelectionCropState.panX = claimSelectionCropState.confirmedPanX;
+            claimSelectionCropState.panY = claimSelectionCropState.confirmedPanY;
+            claimSelectionCropState.cropScale = claimSelectionCropState.confirmedCropScale;
+        }
+
+        function updateClaimSelectionCropModeUi() {
+            const hasImage = Boolean(claimSelectionCropState.rawImageDataUrl);
+            claimSelectionImageCropModeButton.classList.toggle('hidden', !hasImage);
+            claimSelectionImageCropModeButton.classList.toggle('flex', hasImage);
+            claimSelectionImageCropModeIconFocus.classList.toggle('hidden', claimSelectionCropState.isCropMode);
+            claimSelectionImageCropModeIconCheck.classList.toggle('hidden', !claimSelectionCropState.isCropMode);
+            claimSelectionCropResizeHandle.classList.toggle('hidden', !claimSelectionCropState.isCropMode);
+        }
+
+        function exportClaimSelectionCroppedImage() {
+            if (!claimSelectionCropState.rawImageDataUrl || !claimSelectionCropState.sourceWidth || !claimSelectionCropState.sourceHeight) {
+                claimSelectionState.imageDataUrl = '';
+                return;
+            }
+            const scaleX = claimSelectionCropState.sourceWidth / claimSelectionCropState.renderedWidth;
+            const scaleY = claimSelectionCropState.sourceHeight / claimSelectionCropState.renderedHeight;
+            const sourceX = Math.max(0, (claimSelectionCropState.cropLeft - claimSelectionCropState.renderedLeft) * scaleX);
+            const sourceY = Math.max(0, (claimSelectionCropState.cropTop - claimSelectionCropState.renderedTop) * scaleY);
+            const sourceWidth = Math.max(1, claimSelectionCropState.cropWidth * scaleX);
+            const sourceHeight = Math.max(1, claimSelectionCropState.cropHeight * scaleY);
+
+            const canvasElement = document.createElement('canvas');
+            canvasElement.width = Math.round(sourceWidth);
+            canvasElement.height = Math.round(sourceHeight);
+            const canvasCtx = canvasElement.getContext('2d');
+            if (!canvasCtx) {
+                return;
+            }
+            canvasCtx.drawImage(
+                claimSelectionImagePreview,
+                sourceX,
+                sourceY,
+                sourceWidth,
+                sourceHeight,
+                0,
+                0,
+                canvasElement.width,
+                canvasElement.height
+            );
+            claimSelectionState.imageDataUrl = canvasElement.toDataURL('image/jpeg', 0.92);
+        }
+
+        function setClaimSelectionImage(imageDataUrl) {
+            const nextRawImageDataUrl = imageDataUrl || '';
+            const hasChanged = nextRawImageDataUrl !== claimSelectionCropState.rawImageDataUrl;
+            claimSelectionCropState.rawImageDataUrl = nextRawImageDataUrl;
+            const hasImage = Boolean(claimSelectionCropState.rawImageDataUrl);
+            claimSelectionState.imageSourceDataUrl = hasImage ? claimSelectionCropState.rawImageDataUrl : '';
+            if (!hasImage) {
+                claimSelectionState.imageDataUrl = '';
+            }
+            if (hasChanged) {
+                claimSelectionCropState.panX = 0.5;
+                claimSelectionCropState.panY = 0.5;
+                claimSelectionCropState.cropScale = 1;
+                claimSelectionCropState.confirmedPanX = 0.5;
+                claimSelectionCropState.confirmedPanY = 0.5;
+                claimSelectionCropState.confirmedCropScale = 1;
+                claimSelectionCropState.isCropMode = false;
+            }
+
+            claimSelectionImagePreview.src = hasImage ? claimSelectionCropState.rawImageDataUrl : '';
+            claimSelectionImageViewport.classList.toggle('hidden', !hasImage);
+            claimSelectionImagePlaceholder.classList.toggle('hidden', hasImage);
+            claimSelectionImageDeleteButton.classList.toggle('hidden', !hasImage);
+            claimSelectionImageDeleteButton.classList.toggle('flex', hasImage);
+            claimSelectionImageContainer.classList.toggle('bg-iron-100', !hasImage);
+            claimSelectionImageContainer.classList.toggle('bg-iron-50', hasImage);
+
+            if (!hasImage) {
+                claimSelectionCropState.sourceWidth = 0;
+                claimSelectionCropState.sourceHeight = 0;
+                claimSelectionCropState.cropScale = 1;
+                claimSelectionCropBox.style.width = '0px';
+                claimSelectionCropBox.style.height = '0px';
+            }
+            updateClaimSelectionCropModeUi();
+        }
+
+        function normalizeClaimTags(tags) {
+            if (!Array.isArray(tags)) {
+                return [];
+            }
+
+            const unique = new Set();
+            for (const tag of tags) {
+                const next = String(tag || '').trim();
+                if (!next) {
+                    continue;
+                }
+                unique.add(next);
+            }
+            return Array.from(unique).slice(0, 20);
+        }
+
+        function renderClaimSelectionTags() {
+            claimSelectionTagList.innerHTML = '';
+
+            for (const tag of claimSelectionState.tags || []) {
+                const chip = document.createElement('span');
+                chip.className = 'inline-flex items-center gap-1 rounded-full border border-iron-200 bg-iron-50 px-2.5 py-1 text-step--1 text-woodsmoke-700';
+                chip.textContent = `#${tag}`;
+
+                const removeButton = document.createElement('button');
+                removeButton.type = 'button';
+                removeButton.className = 'ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-woodsmoke-500 transition hover:bg-iron-100 hover:text-woodsmoke-700';
+                removeButton.setAttribute('aria-label', `Remove tag ${tag}`);
+                removeButton.innerHTML = '&times;';
+                removeButton.addEventListener('click', () => {
+                    claimSelectionState.tags = claimSelectionState.tags.filter((existingTag) => existingTag !== tag);
+                    renderClaimSelectionTags();
+                    syncClaimSelectionInputsToViewedClaim();
+                });
+
+                chip.appendChild(removeButton);
+                claimSelectionTagList.appendChild(chip);
+            }
+        }
+
+        function setClaimSelectionTags(tags) {
+            claimSelectionState.tags = normalizeClaimTags(tags);
+            renderClaimSelectionTags();
+        }
+
+        function normalizeClaimTitle(value, options = {}) {
+            const { finalize = false } = options;
+            const source = String(value || '');
+            let result = '';
+            let spaceCount = 0;
+            let previousWasSpace = false;
+
+            for (const char of source) {
+                if (result.length >= 30) {
+                    break;
+                }
+
+                if (char === ' ') {
+                    if (spaceCount >= 3 || previousWasSpace) {
+                        continue;
+                    }
+                    result += char;
+                    spaceCount += 1;
+                    previousWasSpace = true;
+                    continue;
+                }
+
+                result += char;
+                previousWasSpace = false;
+            }
+
+            if (!finalize) {
+                return result;
+            }
+
+            return result.trim();
+        }
+
+        function getClaimTitleValueOrDefault(value) {
+            return normalizeClaimTitle(value, { finalize: true }) || 'Claimed Range Name';
+        }
+
+        function renderClaimTitleEditState() {
+            const isEditing = Boolean(claimSelectionState.isEditingTitle);
+            const hasTitle = String(claimSelectionModalTitle.value || '').length > 0;
+
+            claimSelectionModalTitle.classList.toggle('whitespace-nowrap', !isEditing);
+            claimSelectionModalTitle.classList.toggle('text-ellipsis', !isEditing);
+            claimSelectionModalTitle.classList.toggle('overflow-hidden', !isEditing);
+            claimSelectionModalTitle.classList.toggle('whitespace-normal', isEditing);
+
+            if (isEditing) {
+                claimSelectionModalTitle.removeAttribute('readonly');
+            } else {
+                claimSelectionModalTitle.setAttribute('readonly', 'readonly');
+            }
+
+            editClaimTitleButton.textContent = isEditing ? 'Save' : 'Edit';
+            cancelClaimTitleEditButton.classList.toggle('hidden', !isEditing);
+            cancelClaimTitleEditButton.classList.toggle('inline-flex', isEditing);
+            clearClaimTitleButton.classList.toggle('hidden', !isEditing || !hasTitle);
+            clearClaimTitleButton.classList.toggle('inline-flex', isEditing && hasTitle);
+        }
+
+        function syncClaimSelectionInputsToViewedClaim(options = {}) {
+            if (!claimSelectionState.viewingClaimId) {
+                return;
+            }
+            const includeImage = Boolean(options.includeImage);
+
+            const viewedClaim = getClaimedRangeById(claimSelectionState.viewingClaimId);
+            const activeMap = maps[activeMapIndex];
+            if (!viewedClaim || !activeMap?.claimedRanges) {
+                return;
+            }
+
+            const updatedClaim = {
+                ...viewedClaim,
+                title: getClaimTitleValueOrDefault(claimSelectionState.title),
+                description: String(claimSelectionDescriptionInput.value || '').slice(0, 512),
+                redirectUrl: String(claimSelectionRedirectInput.value || '').trim(),
+                tags: [...(claimSelectionState.tags || [])],
+                imageSourceDataUrl: includeImage
+                    ? (claimSelectionState.imageSourceDataUrl || '')
+                    : (viewedClaim.imageSourceDataUrl || ''),
+                imageDataUrl: includeImage ? (claimSelectionState.imageDataUrl || '') : (viewedClaim.imageDataUrl || ''),
+                imageCrop: includeImage ? getClaimSelectionCropSnapshot() : (viewedClaim.imageCrop || null),
+            };
+
+            activeMap.claimedRanges = activeMap.claimedRanges.map((range) => (
+                range.id === viewedClaim.id ? updatedClaim : range
+            ));
+            claimedRanges = activeMap.claimedRanges;
+            writeStoredClaimedRanges(activeMap.id, activeMap.claimedRanges);
+        }
+
+        function applyClaimSelectionImageToContext(imageDataUrl) {
+            setClaimSelectionImage(imageDataUrl || '');
+            if (imageDataUrl) {
+                exportClaimSelectionCroppedImage();
+            }
+        }
+
+        function renderClaimSelectionOverlay() {
+            const viewedClaim = getClaimedRangeById(claimSelectionState.viewingClaimId);
+            if (viewedClaim) {
+                claimSelectionButton.classList.add('hidden');
+                claimSelectionButton.classList.remove('inline-flex');
+                closeEvaluateSelectionModal();
+
+                const rangeRightPoint = worldPointToWrapperPoint(
+                    (viewedClaim.bounds.maxCol + 1) * config.cellSize,
+                    ((viewedClaim.bounds.minRow + viewedClaim.bounds.maxRow + 1) * config.cellSize) / 2
+                );
+
+                claimSelectionState.title = getClaimTitleValueOrDefault(viewedClaim.title);
+                claimSelectionModalTitle.value = claimSelectionState.title;
+                claimSelectionDescriptionInput.value = viewedClaim.description || '';
+                claimSelectionRedirectInput.value = viewedClaim.redirectUrl || '';
+                claimSelectionMetaLine.textContent = `${viewedClaim.metrics.total} tile${viewedClaim.metrics.total === 1 ? '' : 's'} - ${formatTtkValue(viewedClaim.ttkValue)}`;
+                updateClaimAspectRatioBadge(viewedClaim.bounds);
+                setClaimSelectionImage(
+                    claimSelectionState.imageSourceDataUrl
+                    || viewedClaim.imageSourceDataUrl
+                    || viewedClaim.imageDataUrl
+                    || ''
+                );
+                applyClaimSelectionCropSnapshot(viewedClaim.imageCrop || null);
+                if (claimSelectionCropState.rawImageDataUrl && claimSelectionCropState.sourceWidth && claimSelectionCropState.sourceHeight) {
+                    updateClaimSelectionCropLayout();
+                    exportClaimSelectionCroppedImage();
+                }
+                setClaimSelectionTags(viewedClaim.tags || []);
+                setClaimSelectionModalDroppedMode(isAuctionRange(viewedClaim), viewedClaim);
+                if (!isAuctionRange(viewedClaim)) {
+                    renderClaimTitleEditState();
+                }
+
+                const shouldAttachClaimPopup = Boolean(config.attachPopupsToRange);
+                if (!claimSelectionState.modalPosition || shouldAttachClaimPopup) {
+                    const modalWidth = claimSelectionModal.offsetWidth || 380;
+                    const oneTileGapPx = config.cellSize * camera.zoom;
+                    const maxLeft = Math.max(12, wrapper.clientWidth - modalWidth - 12);
+                    let desiredLeft = rangeRightPoint.x + oneTileGapPx;
+
+                    if (desiredLeft > maxLeft) {
+                        const overflowPx = desiredLeft - maxLeft;
+                        camera.x -= overflowPx / camera.zoom;
+                        desiredLeft = maxLeft;
+                    }
+
+                    claimSelectionState.modalPosition = clampClaimSelectionModalPosition(
+                        desiredLeft,
+                        rangeRightPoint.y - 500 / 2
+                    );
+                } else {
+                    claimSelectionState.modalPosition = clampClaimSelectionModalPosition(
+                        claimSelectionState.modalPosition.left,
+                        claimSelectionState.modalPosition.top
+                    );
+                }
+
+                applyClaimSelectionModalPosition(claimSelectionState.modalPosition);
+                claimSelectionModal.classList.remove('hidden');
+                return;
+            }
+
+            claimSelectionModal.classList.add('hidden');
+            const committedKeys = getCommittedSelectionKeys();
+            const committedBounds = getCommittedSelectionBounds();
+            const shouldShowClaim = !selectionState.draft && committedKeys.size && committedBounds;
+
+            if (!shouldShowClaim) {
+                claimSelectionButton.classList.add('hidden');
+                claimSelectionButton.classList.remove('inline-flex');
+                updateClaimAspectRatioBadge(null);
+                closeEvaluateSelectionModal();
+                return;
+            }
+
+            const anchorWorldX = (committedBounds.maxCol + 1) * config.cellSize;
+            const anchorWorldY = committedBounds.minRow * config.cellSize;
+            const anchorPoint = worldPointToWrapperPoint(anchorWorldX, anchorWorldY);
+            const clampedButtonX = Math.max(64, Math.min(wrapper.clientWidth - 64, anchorPoint.x + 8));
+            const clampedButtonY = Math.max(48, Math.min(wrapper.clientHeight - 48, anchorPoint.y - 8));
+
+            claimSelectionButton.style.left = `${clampedButtonX}px`;
+            claimSelectionButton.style.top = `${clampedButtonY}px`;
+
+            if (!evaluateSelectionState.isOpen) {
+                claimSelectionButton.classList.remove('hidden');
+                claimSelectionButton.classList.add('inline-flex');
+                evaluateSelectionModal.classList.add('hidden');
+                return;
+            }
+
+            claimSelectionButton.classList.add('hidden');
+            claimSelectionButton.classList.remove('inline-flex');
+
+            const metrics = getSelectionMetricsFromKeys(committedKeys);
+            if (metrics) {
+                const occupiedKeys = getOccupiedTileKeys();
+                const valuation = getSelectionClaimValuation(committedKeys, committedBounds, evaluateSelectionState.zoningRings, occupiedKeys);
+                const ttkValue = formatTtkValue(valuation.totalTtkValue);
+                evaluateSelectionModalSummary.textContent = `This range spans ${metrics.xCount} by ${metrics.yCount} tiles with ${evaluateSelectionState.zoningRings} zoning ring${evaluateSelectionState.zoningRings === 1 ? '' : 's'}.`;
+                evaluateSelectionRangeValue.textContent = `${metrics.xCount} x ${metrics.yCount}`;
+                evaluateSelectionTileCountValue.textContent = `${metrics.total} tile${metrics.total === 1 ? '' : 's'}`;
+                evaluateSelectionValueValue.textContent = ttkValue;
+                evaluateZoningRingsValue.textContent = String(evaluateSelectionState.zoningRings);
+                decreaseEvaluateZoningRingsButton.disabled = evaluateSelectionState.zoningRings <= 0;
+                increaseEvaluateZoningRingsButton.disabled = evaluateSelectionState.zoningRings >= 3;
+                evaluateZoningRingBreakdown.innerHTML = renderZoningRingBreakdown(valuation.ringBreakdown, evaluateSelectionState.zoningRings);
+                renderEvaluateClaimButton(ttkValue);
+            }
+
+            const shouldAttachEvaluatePopup = Boolean(config.attachPopupsToRange);
+            if (!evaluateSelectionState.modalPosition || shouldAttachEvaluatePopup) {
+                evaluateSelectionState.modalPosition = clampEvaluateSelectionModalPosition(
+                    clampedButtonX + 22,
+                    clampedButtonY - 500 / 2
+                );
+            } else {
+                evaluateSelectionState.modalPosition = clampEvaluateSelectionModalPosition(
+                    evaluateSelectionState.modalPosition.left,
+                    evaluateSelectionState.modalPosition.top
+                );
+            }
+
+            applyEvaluateSelectionModalPosition(evaluateSelectionState.modalPosition);
+            evaluateSelectionModal.classList.remove('hidden');
+        }
+
+        function jumpToSelection() {
+            const bounds = getCurrentSelectionBounds();
+            if (!bounds) {
+                return;
+            }
+
+            const selectionCenterX = (bounds.minCol + bounds.maxCol + 1) * config.cellSize / 2;
+            const selectionCenterY = (bounds.minRow + bounds.maxRow + 1) * config.cellSize / 2;
+
+            animateCameraTo({
+                x: -selectionCenterX,
+                y: -selectionCenterY,
+                zoom: camera.zoom,
+            }, 220);
+        }
+
+        function renderStatusPanel() {
+            const metrics = getSelectionMetrics();
+            renderSelectionModeToggle();
+
+            if (metrics) {
+                const { xCount, yCount, total } = metrics;
+                const limitNote = (selectionState.draft?.limitReached || selectionState.lastLimitReason)
+                    ? ` · max ${config.maxSelectionCols} x ${config.maxSelectionRows}`
+                    : '';
+
+                statusPanel.style.width = '420px';
+                jumpToSelectionButton.classList.remove('hidden');
+                jumpToSelectionButton.classList.add('inline-flex');
+                statusPanelLabel.textContent = 'Selection';
+                statusPanelPrimary.textContent = `X: ${xCount} tile${xCount === 1 ? '' : 's'}, Y: ${yCount} tile${yCount === 1 ? '' : 's'}`;
+                statusPanelSecondary.textContent = `${total} total tile${total === 1 ? '' : 's'} selected${limitNote}`;
+                return;
+            }
+
+            statusPanel.style.width = '220px';
+            jumpToSelectionButton.classList.add('hidden');
+            jumpToSelectionButton.classList.remove('inline-flex');
+            statusPanelLabel.textContent = 'Camera';
+            statusPanelPrimary.textContent = `X: ${Math.round(camera.x)}, Y: ${Math.round(camera.y)}`;
+            statusPanelSecondary.textContent = `Zoom: ${camera.zoom.toFixed(2)}x`;
+        }
+
+        function clearTileSelection() {
+            selectionState.committedBounds = null;
+            selectionState.committedKeys = new Set();
+            selectionState.draft = null;
+            selectionState.lastLimitReason = '';
+            closeClaimSelectionModal();
+            closeEvaluateSelectionModal();
+            evaluateSelectionState.zoningRings = 0;
+            claimSelectionState.imageSourceDataUrl = '';
+            setClaimSelectionImage('');
+            setClaimSelectionTags([]);
+            claimSelectionDescriptionInput.value = '';
+            claimSelectionRedirectInput.value = '';
+            claimSelectionState.title = 'Claimed Range Name';
+            claimSelectionState.isEditingTitle = false;
+            claimSelectionState.titleBeforeEdit = 'Claimed Range Name';
+            claimSelectionModalTitle.value = claimSelectionState.title;
+            renderClaimTitleEditState();
+            updateClaimAspectRatioBadge(null);
+        }
+
+        function commitSelectionKeys(keys) {
+            selectionState.committedKeys = new Set(keys || []);
+            selectionState.committedBounds = getSelectionBoundsFromKeys(selectionState.committedKeys);
+            selectionState.lastLimitReason = selectionState.draft?.limitReached ? `max ${config.maxSelectionCols} x ${config.maxSelectionRows}` : '';
+        }
+
+        function convertSelectionMode(nextMode) {
+            const currentKeys = getSelectionKeys();
+            const currentBounds = getCurrentSelectionBounds();
+
+            selectionState.mode = nextMode;
+
+            if (nextMode === 'area') {
+                selectionState.committedBounds = currentBounds;
+                selectionState.committedKeys = new Set(currentKeys || []);
+                if (selectionState.draft) {
+                    selectionState.draft = currentBounds
+                        ? {
+                            operation: selectionState.draft.operation || 'replace',
+                            baseKeys: new Set(selectionState.draft.baseKeys || []),
+                            startTile: { col: currentBounds.minCol, row: currentBounds.minRow },
+                            endTile: { col: currentBounds.maxCol, row: currentBounds.maxRow },
+                            lastTile: selectionState.draft.lastTile || selectionState.draft.endTile || selectionState.draft.startTile,
+                            visitedKeys: createTileKeySetFromBounds(currentBounds),
+                        }
+                        : null;
+                }
+                return;
+            }
+
+            selectionState.committedBounds = null;
+            selectionState.committedKeys = new Set(currentKeys || []);
+            if (selectionState.draft) {
+                const lastTile = selectionState.draft.lastTile || selectionState.draft.endTile || selectionState.draft.startTile;
+                selectionState.draft = {
+                    ...selectionState.draft,
+                    lastTile,
+                    visitedKeys: new Set(currentKeys || []),
+                };
+            }
+        }
+
+        function getClaimedRangeCoverImage(imageDataUrl) {
+            const source = String(imageDataUrl || '').trim();
+            if (!source) {
+                return null;
+            }
+
+            const cached = claimedRangeCoverImageCache.get(source);
+            if (cached) {
+                return cached.loaded ? cached.image : null;
+            }
+
+            const image = new Image();
+            const cacheEntry = {
+                image,
+                loaded: false,
+                errored: false,
+            };
+
+            image.onload = () => {
+                cacheEntry.loaded = true;
+                scheduleRender();
+            };
+            image.onerror = () => {
+                cacheEntry.errored = true;
+            };
+            image.src = source;
+            claimedRangeCoverImageCache.set(source, cacheEntry);
+
+            return null;
+        }
+
+        function drawClaimedRanges() {
+            const cellSize = config.cellSize;
+
+            for (const range of claimedRanges) {
+                const isSelected = range.id === selectedClaimedRangeId;
+                const isAuctioned = isAuctionRange(range);
+                const left = range.bounds.minCol * cellSize;
+                const top = range.bounds.minRow * cellSize;
+                const width = (range.bounds.maxCol - range.bounds.minCol + 1) * cellSize;
+                const height = (range.bounds.maxRow - range.bounds.minRow + 1) * cellSize;
+
+                const coverImage = getClaimedRangeCoverImage(range.imageDataUrl || '');
+                if (coverImage) {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.rect(left, top, width, height);
+                    ctx.clip();
+                    ctx.drawImage(coverImage, left, top, width, height);
+                    ctx.restore();
+                }
+
+                const overlayFill = coverImage
+                    ? (isAuctioned
+                        ? (isSelected ? 'rgba(209, 209, 209, 0.28)' : 'rgba(230, 230, 230, 0.22)')
+                        : (isSelected ? 'rgba(60, 143, 144, 0.12)' : 'rgba(60, 143, 144, 0.06)'))
+                    : (isAuctioned
+                        ? (isSelected ? 'rgba(209, 209, 209, 0.33)' : 'rgba(230, 230, 230, 0.26)')
+                        : (isSelected ? 'rgba(60, 143, 144, 0.16)' : 'rgba(60, 143, 144, 0.09)'));
+                ctx.fillStyle = overlayFill;
+                ctx.fillRect(left, top, width, height);
+
+                if (coverImage) {
+                    // Keep the tile identity visible over cover images.
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.rect(left, top, width, height);
+                    ctx.clip();
+
+                    ctx.beginPath();
+                    for (let col = range.bounds.minCol + 1; col <= range.bounds.maxCol; col += 1) {
+                        const lineX = col * cellSize;
+                        ctx.moveTo(lineX, top);
+                        ctx.lineTo(lineX, top + height);
+                    }
+                    for (let row = range.bounds.minRow + 1; row <= range.bounds.maxRow; row += 1) {
+                        const lineY = row * cellSize;
+                        ctx.moveTo(left, lineY);
+                        ctx.lineTo(left + width, lineY);
+                    }
+                    ctx.strokeStyle = 'rgba(230, 230, 230, 0.28)';
+                    ctx.lineWidth = Math.max(0.75 / camera.zoom, 0.5);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+
+                ctx.strokeStyle = isAuctioned
+                    ? (isSelected ? '#a3a3a3' : '#d1d1d1')
+                    : (isSelected ? '#285a5d' : '#3c8f90');
+                ctx.lineWidth = Math.max((isSelected ? 2.5 : 1.5) / camera.zoom, 1);
+                ctx.strokeRect(
+                    left + 1 / camera.zoom,
+                    top + 1 / camera.zoom,
+                    width - 2 / camera.zoom,
+                    height - 2 / camera.zoom
+                );
+            }
+        }
+
+        function drawTileSelection() {
+            const cellSize = config.cellSize;
+            const keys = getSelectionKeys();
+            if (!keys?.size) {
+                return;
+            }
+
+            for (const key of keys) {
+                const { col, row } = parseTileKey(key);
+                const x = col * cellSize;
+                const y = row * cellSize;
+
+                ctx.fillStyle = config.selectionFillColor;
+                ctx.fillRect(x, y, cellSize, cellSize);
+
+                ctx.strokeStyle = config.selectionStrokeColor;
+                ctx.lineWidth = Math.max(2 / camera.zoom, 1.25);
+                ctx.strokeRect(
+                    x + 1 / camera.zoom,
+                    y + 1 / camera.zoom,
+                    cellSize - 2 / camera.zoom,
+                    cellSize - 2 / camera.zoom
+                );
+            }
+
+            if (selectionState.mode === 'area') {
+                const bounds = getCurrentSelectionBounds();
+                if (!bounds) {
+                    return;
+                }
+
+                ctx.strokeStyle = config.selectionOutlineColor;
+                ctx.lineWidth = Math.max(1.5 / camera.zoom, 1);
+                ctx.strokeRect(
+                    bounds.minCol * cellSize,
+                    bounds.minRow * cellSize,
+                    (bounds.maxCol - bounds.minCol + 1) * cellSize,
+                    (bounds.maxRow - bounds.minRow + 1) * cellSize
+                );
+            }
+        }
+
+        function drawClaimSelectionEnhancements() {
+            const bounds = getCommittedSelectionBounds();
+            const keys = getCommittedSelectionKeys();
+            if (selectionState.draft || !bounds || !keys.size) {
+                return;
+            }
+
+            const cellSize = config.cellSize;
+            const ringBreakdown = getZoningRingBreakdown(bounds, evaluateSelectionState.zoningRings, getOccupiedTileKeys());
+
+            for (const ring of ringBreakdown) {
+                ctx.fillStyle = `${getConfettiRingColor(ring.ringIndex)}44`;
+                ctx.strokeStyle = getConfettiRingColor(ring.ringIndex);
+                ctx.lineWidth = Math.max(1.25 / camera.zoom, 1);
+
+                for (const key of ring.keys) {
+                    const { col, row } = parseTileKey(key);
+                    const x = col * cellSize;
+                    const y = row * cellSize;
+
+                    ctx.fillRect(x, y, cellSize, cellSize);
+                    ctx.strokeRect(
+                        x + 1 / camera.zoom,
+                        y + 1 / camera.zoom,
+                        cellSize - 2 / camera.zoom,
+                        cellSize - 2 / camera.zoom
+                    );
+                }
+            }
+
+            ctx.strokeStyle = config.selectionStrokeColor;
+            ctx.lineWidth = Math.max(3 / camera.zoom, 1.5);
+            ctx.strokeRect(
+                bounds.minCol * cellSize,
+                bounds.minRow * cellSize,
+                (bounds.maxCol - bounds.minCol + 1) * cellSize,
+                (bounds.maxRow - bounds.minRow + 1) * cellSize
+            );
+        }
+

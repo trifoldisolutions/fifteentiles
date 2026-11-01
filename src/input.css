@@ -1,0 +1,86 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-sunglo-50: #fcf4f4;
+  --color-sunglo-100: #f9e7e7;
+  --color-sunglo-200: #f5d3d3;
+  --color-sunglo-300: #eeb3b3;
+  --color-sunglo-400: #dd7373;
+  --color-sunglo-500: #d36060;
+  --color-sunglo-600: #be4444;
+  --color-sunglo-700: #9f3636;
+  --color-sunglo-800: #843030;
+  --color-sunglo-900: #6f2d2d;
+  --color-sunglo-950: #3b1414;
+
+  --color-confetti-50: #fcfbea;
+  --color-confetti-100: #f8f5ca;
+  --color-confetti-200: #f3ec98;
+  --color-confetti-300: #ead94c;
+  --color-confetti-400: #e3cb2f;
+  --color-confetti-500: #d0b41e;
+  --color-confetti-600: #b18f16;
+  --color-confetti-700: #8b6a15;
+  --color-confetti-800: #735518;
+  --color-confetti-900: #62481a;
+  --color-confetti-950: #38270b;
+
+  --color-martinique-50: #f3f3fb;
+  --color-martinique-100: #e5e5f4;
+  --color-martinique-200: #d0d1ed;
+  --color-martinique-300: #b0b4e0;
+  --color-martinique-400: #8a8ed0;
+  --color-martinique-500: #6f6ec3;
+  --color-martinique-600: #625bb5;
+  --color-martinique-700: #5b50a5;
+  --color-martinique-800: #504588;
+  --color-martinique-900: #3b3561;
+  --color-martinique-950: #2c2843;
+
+  --color-iron-50: #fafafa;
+  --color-iron-100: #f5f5f5;
+  --color-iron-200: #e6e6e6;
+  --color-iron-300: #d1d1d1;
+  --color-iron-400: #a3a3a3;
+  --color-iron-500: #727272;
+  --color-iron-600: #535353;
+  --color-iron-700: #404040;
+  --color-iron-800: #272727;
+  --color-iron-900: #1a1a1a;
+  --color-iron-950: #0b0b0b;
+
+  --color-breaker-bay-50: #f3faf9;
+  --color-breaker-bay-100: #d8efed;
+  --color-breaker-bay-200: #b0dfdc;
+  --color-breaker-bay-300: #80c8c6;
+  --color-breaker-bay-400: #51a3a3;
+  --color-breaker-bay-500: #3c8f90;
+  --color-breaker-bay-600: #2e7073;
+  --color-breaker-bay-700: #285a5d;
+  --color-breaker-bay-800: #24494b;
+  --color-breaker-bay-900: #213e40;
+  --color-breaker-bay-950: #0f2224;
+
+  --color-woodsmoke-50: #fafafa;
+  --color-woodsmoke-100: #f5f5f5;
+  --color-woodsmoke-200: #e6e6e6;
+  --color-woodsmoke-300: #d6d6d6;
+  --color-woodsmoke-400: #a5a5a5;
+  --color-woodsmoke-500: #767676;
+  --color-woodsmoke-600: #575757;
+  --color-woodsmoke-700: #434343;
+  --color-woodsmoke-800: #292929;
+  --color-woodsmoke-900: #191919;
+  --color-woodsmoke-950: #0a0a0a;
+}
+
+@layer base {
+  html {
+    font-family: 'Noto Sans', sans-serif;
+    font-size: 15px;
+  }
+}
