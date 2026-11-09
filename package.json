@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "nodemon server.js",
     "seed:maps": "node scripts/seedMaps.js",
-    "tw": "npx tailwindcss -i ./src/input.css -o ./public/output.css --watch"
+    "tw": "npx tailwindcss -i ./src/input.css -o ./public/output.css --watch=always"
   },
   "keywords": [],
   "author": "",
