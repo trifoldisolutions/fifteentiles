@@ -4,6 +4,10 @@ module.exports = {
     './public/**/*.html',
     './src/**/*.{css,js}',
     './server.js',
+    './config/**/*.js',
+    './routes/**/*.js',
+    './services/**/*.js',
+    './middleware/**/*.js',
   ],
   theme: {
     extend: {

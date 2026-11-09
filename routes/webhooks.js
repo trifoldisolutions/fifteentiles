@@ -3,7 +3,8 @@ const express = require('express');
 function createWebhookRoutes({ stripe, stripeWebhookSecret, fulfillWalletTopUpSession }) {
   const router = express.Router();
 
-  router.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  // Mounted at /api in server.js, so the URL Stripe posts to stays /api/stripe/webhook
+  router.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     if (!stripe || !stripeWebhookSecret) {
       return res.status(503).send('Stripe webhook is not configured.');
     }
@@ -26,6 +27,10 @@ function createWebhookRoutes({ stripe, stripeWebhookSecret, fulfillWalletTopUpSe
       return res.status(400).send(`Webhook error: ${error.message}`);
     }
   });
+
+  router.routes = [
+    { method: 'POST', path: '/stripe/webhook', label: 'Stripe: credit the wallet when a top-up is paid' },
+  ];
 
   return router;
 }

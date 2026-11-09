@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const { promisify } = require('util');
-const { isValidRegionCode, DEFAULT_REGION } = require('../../shared/regions');
+const { isValidRegionCode, DEFAULT_REGION } = require('../config/regions');
 
 const scrypt = promisify(crypto.scrypt);
 

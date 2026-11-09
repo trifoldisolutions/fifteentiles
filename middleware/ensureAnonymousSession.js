@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const User = require('../../../models/User');
+const User = require('../models/User');
 
 function createEnsureAnonymousSession({ config, sessionService }) {
   return async function ensureAnonymousSession(req, res, next) {

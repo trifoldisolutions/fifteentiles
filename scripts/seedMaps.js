@@ -1,7 +1,7 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
 const Map = require('../models/Map');
-const defaultMaps = require('../data/defaultMaps');
+const defaultMaps = require('../config/defaultMaps');
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/fifteenTiles';
 

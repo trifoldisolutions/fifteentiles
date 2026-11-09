@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const Map = require('../../models/Map');
+const Map = require('../models/Map');
 
 async function connectToDatabase(mongoUri) {
   try {

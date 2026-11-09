@@ -8,11 +8,11 @@
 
 <body class="m-0 h-screen overflow-hidden bg-iron-100">
     <div class="relative h-screen w-screen overflow-hidden">
-        <%- include('partials/index/sidebar') %>
+        <%- include('partials/sidebar') %>
         <%- include('partials/userProfileModal') %>
-        <%- include('partials/index/statusPanel') %>
-        <%- include('partials/index/mapControls') %>
-        <%- include('partials/index/canvasStage') %>
+        <%- include('partials/statusPanel') %>
+        <%- include('partials/mapControls') %>
+        <%- include('partials/canvasStage') %>
     </div>
 
     <script>
@@ -20,7 +20,7 @@
         window.__REGIONS__ = <%- JSON.stringify(regions) %>;
     </script>
     <script>
-        <%- include('partials/index/appScript') %>
+        <%- include('partials/appScript') %>
     </script>
 </body>
 

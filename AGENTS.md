@@ -15,6 +15,40 @@
 - `npm run tw`: Starts Tailwind CSS watch mode.
 - `npm run seed:maps`: Seeds the default maps into the database.
 
+## File and Folder Structure
+**Hard rule:** Whenever you create, move or edit files, follow this layout. Put new code where it says, even if the project doesn't have that folder yet. If something has no place here, ask before adding a new top-level folder. Don't move existing files as a side effect of other work unless the user asks.
+
+```
+15tiles/
+├── server.js            App setup, facades list, startup route map
+├── AGENTS.md
+├── package.json, .env, .gitignore, tailwind.config.js, 15tiles.vbs
+├── .vscode/tasks.json   Defines the `npm run tw` and `npm run dev` tasks; they don't run on folder open
+├── config/              Constants and settings: index.js (env, limits, pricing), database.js, regions.js, defaultMaps.js
+├── models/              Mongoose models, one per file
+├── routes/              Factories that receive their dependencies from server.js
+│   ├── public.js        Public pages, mounted at /
+│   ├── api.js           JSON API, mounted at /api
+│   └── webhooks.js      Calls from outside services, mounted at /api, before express.json()
+├── middleware/          Express middleware: anonymous and signed-in sessions
+├── services/            Shared logic and outside services: auth, billing (Stripe), maps, session
+├── views/
+│   └── public/          The site's one page, index.ejs, with its own partials in public/partials/
+├── src/input.css        Tailwind source, the only CSS file to edit
+├── public/
+│   ├── output.css       Built by Tailwind: never edit or commit it
+│   └── index.html       Leftover test page, served at /index.html
+├── scripts/             Scripts run by hand, each with its own npm script
+└── dev_resources/       Git-ignored and internal: journal, tasks, commit message, plans, local-only notes
+```
+
+- **Routes:** Add each route to its section's file, with a line in that file's `router.routes` list (`{ method, path, label }`). No routes in `server.js`, and no new route file per feature. In `routes/api.js`, a route goes in its area's router (maps, auth, billing, session), each mounted in order at the end of the file. Logic that several routes share, or that calls an outside service, goes in `services/`.
+- **Webhooks:** Stripe signs the raw request body, so `routes/webhooks.js` stays mounted before `express.json()` in `server.js`.
+- **Folder names:** No `utils/`, `lib/` or `helpers/`. Helpers go in `services/`, or in `middleware/` if they handle a request.
+- **Views:** Every page goes in its section's folder, never directly in `views/`. The folder already says the section, so name files for what they show: `views/admin/users.ejs`, not `views/admin-users.ejs`.
+- **Local-only files:** Notes, screenshots, logs, prompts, one-off scripts and source images go in `dev_resources/`, not the project root.
+- **Instruction files:** `AGENTS.md` is the only one. No `CLAUDE.md` or `.claude/` folder.
+
 
 ---
 
